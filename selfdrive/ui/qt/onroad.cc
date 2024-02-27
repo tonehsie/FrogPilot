@@ -1026,7 +1026,7 @@ void AnnotatedCameraWidget::drawDriverState(QPainter &painter, const UIState *s)
   painter.restore();
 }
 
-void AnnotatedCameraWidget::drawLead(QPainter &painter, const cereal::RadarState::LeadData::Reader &lead_data, const QPointF &vd) {
+void AnnotatedCameraWidget::drawLead(QPainter &painter, const cereal::RadarState::LeadData::Reader &lead_data, const QPointF &vd, const bool adjacent) {
   painter.save();
 
   const float speedBuff = customColors ? 25. : 10.;  // Make the center of the chevron appear sooner if a custom theme is active
@@ -1056,7 +1056,9 @@ void AnnotatedCameraWidget::drawLead(QPainter &painter, const cereal::RadarState
 
   // chevron
   QPointF chevron[] = {{x + (sz * 1.25), y + sz}, {x, y}, {x - (sz * 1.25), y + sz}};
-  if (currentHolidayTheme != 0) {
+  if (adjacent) {
+    painter.setBrush(whiteColor(fillAlpha));
+  } else if (currentHolidayTheme != 0) {
     painter.setBrush(std::get<3>(holidayThemeConfiguration[currentHolidayTheme]).begin()->second);
   } else if (customColors != 0) {
     painter.setBrush(std::get<3>(themeConfiguration[customColors]).begin()->second);
@@ -1069,16 +1071,19 @@ void AnnotatedCameraWidget::drawLead(QPainter &painter, const cereal::RadarState
   if (leadInfo) {
     // Declare the variables
     float lead_speed = std::max(lead_data.getVLead(), 0.0f);  // Ensure lead speed doesn't go under 0 m/s cause that's dumb
+    float yRel = lead_data.getYRel();
 
     // Form the text and center it below the chevron
     painter.setPen(Qt::white);
     painter.setFont(InterFont(35, QFont::Bold));
 
-    QString text = QString("%1 %2 | %3 %4")
+    QString text = QString("%1 %2 | %3 %4 | %5 %6")
                            .arg(qRound(d_rel * distanceConversion))
                            .arg(leadDistanceUnit)
                            .arg(qRound(lead_speed * speedConversion))
-                           .arg(leadSpeedUnit);
+                           .arg(leadSpeedUnit)
+                           .arg(yRel, 0, 'f', 2, '0')
+                           .arg(leadDistanceUnit);
 
     // Calculate the text starting position
     QFontMetrics metrics(painter.font());
@@ -1159,11 +1164,27 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
       update_leads(s, radar_state, model.getPosition());
       auto lead_one = radar_state.getLeadOne();
       auto lead_two = radar_state.getLeadTwo();
+      auto lead_left = radar_state.getLeadLeft();
+      auto lead_right = radar_state.getLeadRight();
+      auto lead_left_far = radar_state.getLeadLeftFar();
+      auto lead_right_far = radar_state.getLeadRightFar();
       if (lead_one.getStatus()) {
         drawLead(painter, lead_one, s->scene.lead_vertices[0]);
       }
       if (lead_two.getStatus() && (std::abs(lead_one.getDRel() - lead_two.getDRel()) > 3.0)) {
         drawLead(painter, lead_two, s->scene.lead_vertices[1]);
+      }
+      if (lead_left.getStatus()) {
+        drawLead(painter, lead_left, s->scene.lead_vertices[2], true);
+      }
+      if (lead_right.getStatus()) {
+        drawLead(painter, lead_right, s->scene.lead_vertices[3], true);
+      }
+      if (lead_left_far.getStatus()) {
+        drawLead(painter, lead_left_far, s->scene.lead_vertices[4], true);
+      }
+      if (lead_right_far.getStatus()) {
+        drawLead(painter, lead_right_far, s->scene.lead_vertices[5], true);
       }
     }
   }
