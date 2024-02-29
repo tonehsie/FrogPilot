@@ -36,7 +36,7 @@ from openpilot.selfdrive.controls.lib.vehicle_model import VehicleModel
 from openpilot.system.hardware import HARDWARE
 from openpilot.system.version import get_short_branch
 
-from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import CRUISING_SPEED, THRESHOLD, MovingAverageCalculator
+from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import CRUISING_SPEED
 
 from openpilot.selfdrive.frogpilot.functions.speed_limit_controller import SpeedLimitController
 
@@ -194,8 +194,6 @@ class Controls:
     self.previous_speed_limit = SpeedLimitController.desired_speed_limit
     self.random_event_timer = 0
     self.speed_limit_changed_timer = 0
-
-    self.green_light_mac = MovingAverageCalculator()
 
     ignore = self.sensor_packets + ['testJoystick']
     if SIMULATION:
@@ -602,8 +600,7 @@ class Controls:
       green_light &= not CS.gasPressed
       green_light &= not self.sm['longitudinalPlan'].hasLead
 
-      self.green_light_mac.add_data(green_light)
-      if self.green_light_mac.get_moving_average() >= THRESHOLD:
+      if green_light:
         self.events.add(EventName.greenLight)
 
     # Lead departing alert
@@ -653,7 +650,7 @@ class Controls:
       # Cancel the confirmation message after 10 seconds
       if self.FPCC.speedLimitChanged:
         self.speed_limit_timer += 1
-        if self.speed_limit_timer >= 1000:
+        if self.speed_limit_timer * DT_CTRL >= 10:
           self.FPCC.speedLimitChanged = False
           self.speed_limit_timer = 0
       else:
@@ -857,6 +854,7 @@ class Controls:
     self.FPCC.alwaysOnLateral &= CS.cruiseState.available
     self.FPCC.alwaysOnLateral &= self.driving_gear
     self.FPCC.alwaysOnLateral &= not self.openpilot_crashed
+    self.FPCC.alwaysOnLateral &= False
 
     if self.FPCC.alwaysOnLateral:
       self.current_alert_types.append(ET.WARNING)

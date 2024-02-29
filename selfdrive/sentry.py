@@ -97,7 +97,7 @@ def init(project: SentryProject) -> bool:
                   max_value_length=8192,
                   environment=env)
 
-  sentry_sdk.set_tag("serial", HARDWARE.get_serial())
+  sentry_sdk.set_user({"id": HARDWARE.get_serial()})
   sentry_sdk.set_tag("branch", get_branch())
   sentry_sdk.set_tag("commit", get_commit())
   sentry_sdk.set_tag("updated", updated)

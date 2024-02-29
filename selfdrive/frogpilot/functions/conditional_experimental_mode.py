@@ -37,7 +37,7 @@ class ConditionalExperimentalMode:
     self.slowing_down_mac = MovingAverageCalculator()
     self.stop_light_mac = MovingAverageCalculator()
 
-  def update(self, carState, enabled, frogpilotNavigation, modelData, radarState, road_curvature, t_follow, v_ego):
+  def update(self, carState, enabled, frogpilotNavigation, modelData, radarState, road_curvature, stop_distance, t_follow, v_ego):
     lead = radarState.leadOne
     v_lead = lead.vLead
 
@@ -48,7 +48,7 @@ class ConditionalExperimentalMode:
       overridden = 0
 
     # Update Experimental Mode based on the current driving conditions
-    condition_met = self.check_conditions(carState, frogpilotNavigation, modelData, v_ego)
+    condition_met = self.check_conditions(carState, frogpilotNavigation, lead, modelData, stop_distance, v_ego)
     if ((not self.experimental_mode and condition_met and overridden not in (1, 3)) or overridden in (2, 4)) and enabled:
       self.experimental_mode = True
     elif (self.experimental_mode and not condition_met and overridden not in (2, 4)) or overridden in (1, 3) or not enabled:
@@ -64,13 +64,13 @@ class ConditionalExperimentalMode:
     self.update_conditions(lead, modelData, radarState, road_curvature, t_follow, v_ego, v_lead)
 
   # Check conditions for the appropriate state of Experimental Mode
-  def check_conditions(self, carState, frogpilotNavigation, modelData, v_ego):
+  def check_conditions(self, carState, frogpilotNavigation, lead, modelData, stop_distance, v_ego):
     if carState.standstill:
       self.status_value = 0
       return self.experimental_mode
 
     # Keep Experimental Mode active if stopping for a red light
-    if self.status_value == 13 and self.slowing_down(v_ego):
+    if self.status_value == 13 and self.slowing_down(v_ego) and lead.dRel > stop_distance:
       return True
 
     # Navigation check

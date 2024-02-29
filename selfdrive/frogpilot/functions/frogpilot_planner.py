@@ -5,6 +5,7 @@ from openpilot.common.conversions import Conversions as CV
 from openpilot.common.numpy_fast import clip
 from openpilot.selfdrive.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.selfdrive.controls.lib.desire_helper import LANE_CHANGE_SPEED_MIN
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import STOP_DISTANCE
 from openpilot.selfdrive.controls.lib.longitudinal_planner import A_CRUISE_MIN, get_max_accel
 
 from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import CRUISING_SPEED, FrogPilotFunctions
@@ -32,6 +33,7 @@ class FrogPilotPlanner:
     self.mtsc_target = 0
     self.road_curvature = 0
     self.slc_target = 0
+    self.stop_distance = 0
     self.v_cruise = 0
     self.vtsc_target = 0
 
@@ -71,7 +73,7 @@ class FrogPilotPlanner:
 
     # Update Conditional Experimental Mode
     if self.conditional_experimental_mode and self.CP.openpilotLongitudinalControl or self.green_light_alert and carState.standstill:
-      self.cem.update(carState, enabled, sm['frogpilotNavigation'], modelData, sm['radarState'], self.road_curvature, mpc.t_follow, v_ego)
+      self.cem.update(carState, enabled, sm['frogpilotNavigation'], modelData, sm['radarState'], self.road_curvature, self.stop_distance, mpc.t_follow, v_ego)
 
     # Update the current lane widths
     check_lane_width = self.adjacent_lanes or self.blind_spot_path or self.lane_detection
@@ -84,6 +86,9 @@ class FrogPilotPlanner:
 
     # Update the current road curvature
     self.road_curvature = self.fpf.road_curvature(modelData, v_ego)
+
+    # Update the desired stopping distance
+    self.stop_distance = STOP_DISTANCE + self.increased_stopping_distance
 
     # Update the max allowed speed
     self.v_cruise = self.update_v_cruise(carState, controlsState, enabled, modelData, v_cruise, v_ego)
@@ -99,7 +104,7 @@ class FrogPilotPlanner:
     # Pfeiferj's Map Turn Speed Controller
     if self.map_turn_speed_controller and v_ego > CRUISING_SPEED and enabled:
       mtsc_active = self.mtsc_target < v_cruise
-      self.mtsc_target = min(self.mtsc.target_speed(v_ego, carState.aEgo), v_cruise)
+      self.mtsc_target = np.clip(self.mtsc.target_speed(v_ego, carState.aEgo), CRUISING_SPEED, v_cruise)
 
       # MTSC failsafes
       if self.mtsc_curvature_check and self.road_curvature < 1.0 and not mtsc_active:
@@ -158,7 +163,7 @@ class FrogPilotPlanner:
 
       # Get the target velocity for the maximum curve
       self.vtsc_target = (adjusted_target_lat_a / max_curve)**0.5
-      self.vtsc_target = min(self.vtsc_target, v_cruise)
+      self.vtsc_target = np.clip(self.vtsc_target, CRUISING_SPEED, v_cruise)
     else:
       self.vtsc_target = v_cruise
 

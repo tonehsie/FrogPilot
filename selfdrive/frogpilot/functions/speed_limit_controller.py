@@ -42,12 +42,9 @@ class SpeedLimitController:
     limits = [self.car_speed_limit, self.map_speed_limit, self.nav_speed_limit]
     filtered_limits = [limit for limit in limits if limit > CRUISING_SPEED]
 
-    if not filtered_limits:
-      return 0
-
-    if self.highest:
+    if self.highest and filtered_limits:
       return max(filtered_limits)
-    elif self.lowest:
+    elif self.lowest and filtered_limits:
       return min(filtered_limits)
 
     speed_limits = {

@@ -140,6 +140,7 @@ def manager_init() -> None:
     ("Fahrenheit", "0"),
     ("FireTheBabysitter", "0"),
     ("ForceAutoTune", "0"),
+    ("ForceMPHDashboard", "0"),
     ("FPSCounter", "0"),
     ("FrogPilotDrives", "0"),
     ("FrogPilotKilometers", "0"),
@@ -226,6 +227,7 @@ def manager_init() -> None:
     ("StandardFollow", "1.45"),
     ("StandardJerk", "1.0"),
     ("StoppingDistance", "0"),
+    ("StorageParamsSet", "0"),
     ("TurnAggressiveness", "100"),
     ("TurnDesires", "0"),
     ("UnlimitedLength", "1"),
@@ -251,8 +253,10 @@ def manager_init() -> None:
         params.put(k, v)
       else:
         params.put(k, params_storage.get(k))
-    else:
+    elif not params.get_bool("StorageParamsSet"):
       params_storage.put(k, params.get(k))
+
+  params.put_bool("StorageParamsSet", True)
 
   # Create folders needed for msgq
   try:

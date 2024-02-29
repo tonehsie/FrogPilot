@@ -5,7 +5,6 @@ from openpilot.common.params import Params
 from openpilot.system.hardware import HARDWARE
 
 
-params = Params()
 params_memory = Params("/dev/shm/params")
 
 DEFAULT_MODEL = "los-angeles"
@@ -48,6 +47,9 @@ class MovingAverageCalculator:
 
 
 class FrogPilotFunctions:
+  def __init__(self) -> None:
+    self.params = Params()
+
   @staticmethod
   def get_min_accel_eco(v_ego):
     return interp(v_ego, A_CRUISE_MIN_BP_CUSTOM, A_CRUISE_MIN_VALS_ECO)
@@ -80,11 +82,10 @@ class FrogPilotFunctions:
 
   @property
   def current_personality(self):
-    return params.get_int("LongitudinalPersonality")
+    return self.params.get_int("LongitudinalPersonality")
 
-  @staticmethod
-  def distance_button_function(new_personality):
-    params.put_int("LongitudinalPersonality", new_personality)
+  def distance_button_function(self, new_personality):
+    self.params.put_int("LongitudinalPersonality", new_personality)
     params_memory.put_bool("PersonalityChangedViaWheel", True)
 
   @property
@@ -95,17 +96,16 @@ class FrogPilotFunctions:
   def reset_personality_changed_param():
     params_memory.put_bool("PersonalityChangedViaUI", False)
 
-  @staticmethod
-  def lkas_button_function(conditional_experimental_mode):
+  def lkas_button_function(self, conditional_experimental_mode):
     if conditional_experimental_mode:
       # Set "CEStatus" to work with "Conditional Experimental Mode"
       conditional_status = params_memory.get_int("CEStatus")
       override_value = 0 if conditional_status in (1, 2, 3, 4) else 1 if conditional_status >= 5 else 2
       params_memory.put_int("CEStatus", override_value)
     else:
-      experimental_mode = params.get_bool("ExperimentalMode")
+      experimental_mode = self.params.get_bool("ExperimentalMode")
       # Invert the value of "ExperimentalMode"
-      params.put_bool("ExperimentalMode", not experimental_mode)
+      self.params.put_bool("ExperimentalMode", not experimental_mode)
 
   @staticmethod
   def road_curvature(modelData, v_ego):
