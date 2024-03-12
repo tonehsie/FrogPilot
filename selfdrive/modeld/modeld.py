@@ -24,11 +24,15 @@ from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_pose_
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.modeld.models.commonmodel_pyx import ModelFrame, CLContext
 
+from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import DEFAULT_MODEL
+
 PROCESS_NAME = "selfdrive.modeld.modeld"
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
 
+MODEL_NAME = Params().get("Model", encoding='utf-8')
+
 MODEL_PATHS = {
-  ModelRunner.THNEED: Path(__file__).parent / 'models/supercombo.thneed',
+  ModelRunner.THNEED: Path(__file__).parent / ('models/supercombo.thneed' if MODEL_NAME == DEFAULT_MODEL else f'models/models/{MODEL_NAME}.thneed'),
   ModelRunner.ONNX: Path(__file__).parent / 'models/supercombo.onnx'}
 
 METADATA_PATH = Path(__file__).parent / 'models/supercombo_metadata.pkl'
@@ -154,7 +158,7 @@ def main(demo=False):
 
   # messaging
   pm = PubMaster(["modelV2", "cameraOdometry"])
-  sm = SubMaster(["carState", "roadCameraState", "liveCalibration", "driverMonitoringState", "navModel", "navInstruction", "carControl"])
+  sm = SubMaster(["carState", "roadCameraState", "liveCalibration", "driverMonitoringState", "navModel", "navInstruction", "carControl", "frogpilotPlan"])
 
   publish_state = PublishState()
   params = Params()
@@ -242,7 +246,7 @@ def main(demo=False):
     # Enable/disable nav features
     timestamp_llk = sm["navModel"].locationMonoTime
     nav_valid = sm.valid["navModel"] # and (nanos_since_boot() - timestamp_llk < 1e9)
-    nav_enabled = nav_valid and params.get_bool("ExperimentalMode")
+    nav_enabled = nav_valid and (params.get_bool("ExperimentalMode") or params.get_bool("NavChill"))
 
     if not nav_enabled:
       nav_features[:] = 0
@@ -298,9 +302,10 @@ def main(demo=False):
       l_lane_change_prob = desire_state[log.Desire.laneChangeLeft]
       r_lane_change_prob = desire_state[log.Desire.laneChangeRight]
       lane_change_prob = l_lane_change_prob + r_lane_change_prob
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob)
+      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, sm['frogpilotPlan'])
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
+      modelv2_send.modelV2.meta.turnDirection = DH.turn_direction
 
       fill_pose_msg(posenet_send, model_output, meta_main.frame_id, vipc_dropped_frames, meta_main.timestamp_eof, live_calib_seen)
       pm.send('modelV2', modelv2_send)

@@ -323,6 +323,12 @@ enum LaneChangeDirection {
   right @2;
 }
 
+enum TurnDirection {
+  none @0;
+  turnLeft @1;
+  turnRight @2;
+}
+
 struct CanData {
   address @0 :UInt32;
   busTime @1 :UInt16;
@@ -598,6 +604,8 @@ struct RadarState @0x9a185389d6fdd05f {
 
   leadOne @3 :LeadData;
   leadTwo @4 :LeadData;
+  leadLeft @13 :LeadData;
+  leadRight @14 :LeadData;
   cumLagMs @5 :Float32;
 
   struct LeadData {
@@ -731,6 +739,7 @@ struct ControlsState @0x97ff69c53601abf1 {
     normal @0;       # low priority alert for user's convenience
     userPrompt @1;   # mid priority alert that might require user intervention
     critical @2;     # high priority alert that needs immediate user intervention
+    frogpilot @3;    # green startup alert
   }
 
   enum AlertSize {
@@ -781,6 +790,7 @@ struct ControlsState @0x97ff69c53601abf1 {
     saturated @7 :Bool;
     actualLateralAccel @9 :Float32;
     desiredLateralAccel @10 :Float32;
+    nnLog @11 :List(Float32);
    }
 
   struct LateralLQRState {
@@ -943,6 +953,7 @@ struct ModelDataV2 {
     hardBrakePredicted @7 :Bool;
     laneChangeState @8 :LaneChangeState;
     laneChangeDirection @9 :LaneChangeDirection;
+    turnDirection @10 :TurnDirection;
 
 
     # deprecated
@@ -2322,10 +2333,10 @@ struct Event {
     customReservedRawData2 @126 :Data;
 
     # *********** Custom: reserved for forks ***********
-    customReserved0 @107 :Custom.CustomReserved0;
-    customReserved1 @108 :Custom.CustomReserved1;
-    customReserved2 @109 :Custom.CustomReserved2;
-    customReserved3 @110 :Custom.CustomReserved3;
+    frogpilotCarControl @107 :Custom.FrogPilotCarControl;
+    frogpilotDeviceState @108 :Custom.FrogPilotDeviceState;
+    frogpilotNavigation @109 :Custom.FrogPilotNavigation;
+    frogpilotPlan @110 :Custom.FrogPilotPlan;
     customReserved4 @111 :Custom.CustomReserved4;
     customReserved5 @112 :Custom.CustomReserved5;
     customReserved6 @113 :Custom.CustomReserved6;

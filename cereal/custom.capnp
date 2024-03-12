@@ -8,16 +8,37 @@ $Cxx.namespace("cereal");
 # cereal, so use these if you want custom events in your fork.
 
 # you can rename the struct, but don't change the identifier
-struct CustomReserved0 @0x81c2f05a394cf4af {
+struct FrogPilotCarControl @0x81c2f05a394cf4af {
+  alwaysOnLateral @0 :Bool;
+  speedLimitChanged @1 :Bool;
 }
 
-struct CustomReserved1 @0xaedffd8f31e7b55d {
+struct FrogPilotDeviceState @0xaedffd8f31e7b55d {
+  freeSpace @0 :Int16;
+  usedSpace @1 :Int16;
 }
 
-struct CustomReserved2 @0xf35cc4560bbf6ec2 {
+struct FrogPilotNavigation @0xf35cc4560bbf6ec2 {
+  approachingIntersection @0 :Bool;
+  approachingTurn @1 :Bool;
 }
 
-struct CustomReserved3 @0xda96579883444c35 {
+struct FrogPilotPlan @0xda96579883444c35 {
+  adjustedCruise @0 :Float64;
+  conditionalExperimental @1 :Bool;
+  desiredFollowDistance @2 :Int16;
+  laneWidthLeft @3 :Float32;
+  laneWidthRight @4 :Float32;
+  redLight @5 :Bool;
+  safeObstacleDistance @6 :Int16;
+  safeObstacleDistanceStock @7 :Int16;
+  slcOverridden @8 :Bool;
+  slcOverriddenSpeed @9 :Float64;
+  slcSpeedLimit @10 :Float64;
+  slcSpeedLimitOffset @11 :Float32;
+  stoppedEquivalenceFactor @12 :Int16;
+  unconfirmedSlcSpeedLimit @13 :Float64;
+  vtscControllingCurve @14 :Bool;
 }
 
 struct CustomReserved4 @0x80ae746ee2596b11 {

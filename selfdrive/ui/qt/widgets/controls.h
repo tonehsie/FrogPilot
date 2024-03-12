@@ -127,9 +127,17 @@ public:
     QObject::connect(&toggle, &Toggle::stateChanged, this, &ToggleControl::toggleFlipped);
   }
 
+  void setVisualOn() {
+    toggle.togglePosition();
+  }
+
   void setEnabled(bool enabled) {
     toggle.setEnabled(enabled);
     toggle.update();
+  }
+
+  void refresh() {
+    toggle.togglePosition();
   }
 
 signals:

@@ -7,9 +7,12 @@ from typing import Dict, Union, Callable, List, Optional
 from cereal import log, car
 import cereal.messaging as messaging
 from openpilot.common.conversions import Conversions as CV
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
 from openpilot.system.version import get_short_branch
+
+params_memory = Params("/dev/shm/params")
 
 AlertSize = log.ControlsState.AlertSize
 AlertStatus = log.ControlsState.AlertStatus
@@ -228,7 +231,7 @@ def startup_master_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubM
   if "REPLAY" in os.environ:
     branch = "replay"
 
-  return StartupAlert("WARNING: This branch is not tested", branch, alert_status=AlertStatus.userPrompt)
+  return StartupAlert("Hippity hoppity this is my property", "so I do what I want 🐸", alert_status=AlertStatus.frogpilot)
 
 def below_engage_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
   return NoEntryAlert(f"Drive above {get_display_speed(CP.minEnableSpeed, metric)} to engage")
@@ -257,6 +260,22 @@ def no_gps_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, m
     "Hardware malfunctioning if sky is visible",
     AlertStatus.normal, AlertSize.mid,
     Priority.LOWER, VisualAlert.none, AudibleAlert.none, .2, creation_delay=300.)
+
+
+def torque_nn_load_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
+  model_name = params_memory.get("NNFFModelName")
+  if model_name == "":
+    return Alert(
+      "NNFF Torque Controller not available",
+      "Donate logs to Twilsonco to get it added!",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 6.0)
+  else:
+    return Alert(
+      "NNFF Torque Controller loaded",
+      model_name,
+      AlertStatus.frogpilot, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.engage, 5.0)
 
 # *** debug alerts ***
 
@@ -332,6 +351,39 @@ def joystick_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster,
   return NormalPermanentAlert("Joystick Mode", vals)
 
 
+# FrogPilot alerts
+def holiday_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
+  holiday_messages = {
+    1: ("Happy April Fool's Day! 🤡", "aprilFoolsAlert"),
+    2: ("Merry Christmas! 🎄", "christmasAlert"),
+    3: ("¡Feliz Cinco de Mayo! 🌮", "cincoDeMayoAlert"),
+    4: ("Happy Easter! 🐰", "easterAlert"),
+    5: ("Happy Fourth of July! 🎆", "fourthOfJulyAlert"),
+    6: ("Happy Halloween! 🎃", "halloweenAlert"),
+    7: ("Happy New Year! 🎉", "newYearsDayAlert"),
+    8: ("Happy St. Patrick's Day! 🍀", "stPatricksDayAlert"),
+    9: ("Happy Thanksgiving! 🦃", "thanksgivingAlert"),
+    10: ("Happy Valentine's Day! ❤️", "valentinesDayAlert"),
+    11: ("Happy World Frog Day! 🐸", "worldFrogDayAlert"),
+  }
+
+  theme_id = params_memory.get_int("CurrentHolidayTheme")
+  message, alert_type = holiday_messages.get(theme_id, ("", ""))
+
+  return Alert(
+    message,
+    "",
+    AlertStatus.normal, AlertSize.small,
+    Priority.LOWEST, VisualAlert.none, AudibleAlert.none, 5.)
+
+def no_lane_available_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
+  lane_width = sm['frogpilotPlan'].laneWidthLeft if CS.leftBlinker else sm['frogpilotPlan'].laneWidthRight
+  lane_width_msg = f"{lane_width:.1f} meters" if metric else f"{lane_width * CV.METER_TO_FOOT:.1f} feet"
+  return Alert(
+    "No lane available",
+    f"Detected lane width is only {lane_width_msg}",
+    AlertStatus.normal, AlertSize.mid,
+    Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2)
 
 EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
   # ********** events with no alerts **********
@@ -956,6 +1008,131 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
     ET.NO_ENTRY: NoEntryAlert("Vehicle Sensors Calibrating"),
   },
 
+  # FrogPilot Events
+  EventName.frogSteerSaturated: {
+    ET.WARNING: Alert(
+      "Turn Exceeds Steering Limit",
+      "JESUS TAKE THE WHEEL!!",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.LOW, VisualAlert.steerRequired, AudibleAlert.warningSoft, 2.),
+  },
+
+  EventName.greenLight: {
+    ET.PERMANENT: Alert(
+      "Light turned green",
+      "",
+      AlertStatus.frogpilot, AlertSize.small,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
+  EventName.holidayActive: {
+    ET.PERMANENT: holiday_alert,
+  },
+
+  EventName.laneChangeBlockedLoud: {
+    ET.WARNING: Alert(
+      "Car Detected in Blindspot",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.warningSoft, .1),
+  },
+
+  EventName.leadDeparting: {
+    ET.PERMANENT: Alert(
+      "Lead departed",
+      "",
+      AlertStatus.frogpilot, AlertSize.small,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
+  EventName.noLaneAvailable : {
+    ET.PERMANENT: no_lane_available_alert,
+  },
+
+  EventName.openpilotCrashed: {
+    ET.PERMANENT: Alert(
+      "openpilot crashed",
+      "Please post the error log in the FrogPilot Discord!",
+      AlertStatus.normal, AlertSize.mid,
+      Priority.HIGH, VisualAlert.none, AudibleAlert.none, .1),
+  },
+
+  EventName.pedalInterceptorNoBrake: {
+    ET.WARNING: Alert(
+      "Braking Unavailable",
+      "Shift to L",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.HIGH, VisualAlert.wrongGear, AudibleAlert.promptRepeat, 4.),
+  },
+
+  EventName.speedLimitChanged: {
+    ET.PERMANENT: Alert(
+      "Speed Limit Changed",
+      "",
+      AlertStatus.frogpilot, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 3.),
+  },
+
+  EventName.torqueNNLoad: {
+    ET.PERMANENT: torque_nn_load_alert,
+  },
+
+  EventName.turningLeft: {
+    ET.WARNING: Alert(
+      "Turning Left",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.none, .1, alert_rate=0.75),
+  },
+
+  EventName.turningRight: {
+    ET.WARNING: Alert(
+      "Turning Right",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.none, .1, alert_rate=0.75),
+  },
+
+  # Random Events
+  EventName.accel30: {
+    ET.WARNING: Alert(
+      "UwU u went a bit fast there!",
+      "(⁄ ⁄•⁄ω⁄•⁄ ⁄)",
+      AlertStatus.frogpilot, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.uwu, 4.),
+  },
+
+  EventName.firefoxSteerSaturated: {
+    ET.WARNING: Alert(
+      "Turn Exceeds Steering Limit",
+      "IE Has Stopped Responding...",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.LOW, VisualAlert.steerRequired, AudibleAlert.firefox, 4.),
+  },
+
+  EventName.openpilotCrashedRandomEvents: {
+    ET.PERMANENT: Alert(
+      "openpilot crashed 💩",
+      "Please post the error log in the FrogPilot Discord!",
+      AlertStatus.normal, AlertSize.mid,
+      Priority.HIGHEST, VisualAlert.none, AudibleAlert.fart, 4.),
+  },
+
+  EventName.vCruise69: {
+    ET.PERMANENT: Alert(
+      "Lol 69",
+      "",
+      AlertStatus.frogpilot, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.noice, 2.),
+  },
+
+  EventName.yourFrogTriedToKillMe: {
+    ET.PERMANENT: Alert(
+      "Your frog tried to kill me...",
+      "😠",
+      AlertStatus.frogpilot, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.angry, 4.),
+  },
 }
 
 

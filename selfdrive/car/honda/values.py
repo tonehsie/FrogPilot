@@ -21,6 +21,7 @@ class CarControllerParams:
   # -3.5 m/s^2 as per planner limits
   NIDEC_ACCEL_MIN = -4.0  # m/s^2
   NIDEC_ACCEL_MAX = 1.6  # m/s^2, lower than 2.0 m/s^2 for tuning reasons
+  NIDEC_ACCEL_MAX_PLUS = 4.0  # m/s^2
 
   NIDEC_ACCEL_LOOKUP_BP = [-1., 0., .6]
   NIDEC_ACCEL_LOOKUP_V = [-4.8, 0., 2.0]
@@ -33,6 +34,7 @@ class CarControllerParams:
 
   BOSCH_ACCEL_MIN = -3.5  # m/s^2
   BOSCH_ACCEL_MAX = 2.0  # m/s^2
+  BOSCH_ACCEL_MAX_PLUS = 4.0  # m/s^2
 
   BOSCH_GAS_LOOKUP_BP = [-0.2, 2.0]  # 2m/s^2
   BOSCH_GAS_LOOKUP_V = [0, 1600]
@@ -97,6 +99,7 @@ class CAR(StrEnum):
   RIDGELINE = "HONDA RIDGELINE 2017"
   INSIGHT = "HONDA INSIGHT 2019"
   HONDA_E = "HONDA E 2020"
+  CLARITY = "HONDA CLARITY 2018"
 
 
 class Footnote(Enum):
@@ -153,6 +156,7 @@ CAR_INFO: Dict[str, Optional[Union[HondaCarInfo, List[HondaCarInfo]]]] = {
   CAR.RIDGELINE: HondaCarInfo("Honda Ridgeline 2017-24", min_steer_speed=12. * CV.MPH_TO_MS),
   CAR.INSIGHT: HondaCarInfo("Honda Insight 2019-22", "All", min_steer_speed=3. * CV.MPH_TO_MS),
   CAR.HONDA_E: HondaCarInfo("Honda e 2020", "All", min_steer_speed=3. * CV.MPH_TO_MS),
+  CAR.CLARITY: HondaCarInfo("Honda Clarity 2018-22"),
 }
 
 HONDA_VERSION_REQUEST = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER]) + \
@@ -240,6 +244,7 @@ DBC = {
   CAR.INSIGHT: dbc_dict('honda_insight_ex_2019_can_generated', None),
   CAR.HONDA_E: dbc_dict('acura_rdx_2020_can_generated', None),
   CAR.CIVIC_2022: dbc_dict('honda_civic_ex_2022_can_generated', None),
+  CAR.CLARITY: dbc_dict('honda_clarity_hybrid_2018_can_generated', 'acura_ilx_2016_nidec'),
 }
 
 STEER_THRESHOLD = {

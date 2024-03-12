@@ -4,6 +4,7 @@ from typing import Dict, List, Union
 
 from cereal import car
 from panda.python import uds
+from openpilot.common.params import Params
 from openpilot.selfdrive.car import dbc_dict
 from openpilot.selfdrive.car.docs_definitions import CarFootnote, CarHarness, CarInfo, CarParts, Tool, Column
 from openpilot.selfdrive.car.fw_query_definitions import FwQueryConfig, Request, StdQueries, p16
@@ -26,6 +27,8 @@ class CarControllerParams:
       self.STEER_DELTA_DOWN = 40
     elif CP.carFingerprint == CAR.IMPREZA_2020:
       self.STEER_MAX = 1439
+    elif CP.carFingerprint == CAR.IMPREZA and Params().get_bool("CrosstrekTorque"):
+      self.STEER_MAX = 3071
     else:
       self.STEER_MAX = 2047
 

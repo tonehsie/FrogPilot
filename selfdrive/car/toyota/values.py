@@ -17,6 +17,7 @@ PEDAL_TRANSITION = 10. * CV.MPH_TO_MS
 
 class CarControllerParams:
   ACCEL_MAX = 1.5  # m/s2, lower than allowed 2.0 m/s2 for tuning reasons
+  ACCEL_MAX_PLUS = 4.0  # m/s2
   ACCEL_MIN = -3.5  # m/s2
 
   STEER_STEP = 1
@@ -45,6 +46,7 @@ class ToyotaFlags(IntFlag):
   HYBRID = 1
   SMART_DSU = 2
   DISABLE_RADAR = 4
+  ZSS = 8
 
 
 class CAR(StrEnum):
@@ -499,3 +501,7 @@ ANGLE_CONTROL_CAR = {CAR.RAV4_TSS2_2023}
 
 # no resume button press required
 NO_STOP_TIMER_CAR = TSS2_CAR | {CAR.PRIUS_V, CAR.RAV4H, CAR.HIGHLANDER, CAR.SIENNA}
+
+# stop and go
+STOP_AND_GO_CAR = TSS2_CAR | {CAR.PRIUS, CAR.PRIUS_V, CAR.RAV4H, CAR.LEXUS_RX, CAR.CHR, CAR.CAMRY, CAR.HIGHLANDER,
+                              CAR.SIENNA, CAR.LEXUS_CTH, CAR.LEXUS_NX, CAR.MIRAI, CAR.AVALON_2019}

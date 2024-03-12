@@ -17,10 +17,15 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDX
 from openpilot.selfdrive.controls.lib.drive_helpers import V_CRUISE_MAX, CONTROL_N, get_speed_error
 from openpilot.common.swaglog import cloudlog
 
+from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import CRUISING_SPEED
+
 LON_MPC_STEP = 0.2  # first step is 0.2s
 A_CRUISE_MIN = -1.2
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
+
+ACCEL_MAX_PLUS = [ACCEL_MAX, 4.0]
+ACCEL_MAX_PLUS_BP = [0., CRUISING_SPEED]
 
 # Lookup table for turns
 _A_TOTAL_MAX_V = [1.7, 3.2]
@@ -88,8 +93,8 @@ class LongitudinalPlanner:
       j = np.zeros(len(T_IDXS_MPC))
     return x, v, a, j
 
-  def update(self, sm):
-    if self.param_read_counter % 50 == 0:
+  def update(self, sm, frogpilot_planner, params_memory):
+    if self.param_read_counter % 50 == 0 or params_memory.get_bool("PersonalityChangedViaUI") or params_memory.get_bool("PersonalityChangedViaWheel"):
       self.read_param()
     self.param_read_counter += 1
     self.mpc.mode = 'blended' if sm['controlsState'].experimentalMode else 'acc'
@@ -107,17 +112,18 @@ class LongitudinalPlanner:
     # No change cost when user is controlling the speed, or when standstill
     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
 
+    accel_limits = frogpilot_planner.accel_limits
     if self.mpc.mode == 'acc':
-      accel_limits = [A_CRUISE_MIN, get_max_accel(v_ego)]
       accel_limits_turns = limit_accel_in_turns(v_ego, sm['carState'].steeringAngleDeg, accel_limits, self.CP)
     else:
-      accel_limits = [ACCEL_MIN, ACCEL_MAX]
       accel_limits_turns = [ACCEL_MIN, ACCEL_MAX]
 
     if reset_state:
       self.v_desired_filter.x = v_ego
+      # Slowly ramp up the acceleration to prevent jerky behaviors from a standstill
+      max_acceleration = min(interp(v_ego, ACCEL_MAX_PLUS_BP, ACCEL_MAX_PLUS), accel_limits[1])
       # Clip aEgo to cruise limits to prevent large accelerations when becoming active
-      self.a_desired = clip(sm['carState'].aEgo, accel_limits[0], accel_limits[1])
+      self.a_desired = clip(sm['carState'].aEgo, accel_limits[0], max_acceleration)
 
     # Prevent divergence, smooth in current v_ego
     self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
@@ -130,11 +136,13 @@ class LongitudinalPlanner:
     accel_limits_turns[0] = min(accel_limits_turns[0], self.a_desired + 0.05)
     accel_limits_turns[1] = max(accel_limits_turns[1], self.a_desired - 0.05)
 
-    self.mpc.set_weights(prev_accel_constraint, personality=self.personality)
+    self.mpc.set_weights(prev_accel_constraint,
+                         frogpilot_planner.custom_personalities, frogpilot_planner.aggressive_jerk, frogpilot_planner.standard_jerk, frogpilot_planner.relaxed_jerk,
+                         personality=self.personality)
     self.mpc.set_accel_limits(accel_limits_turns[0], accel_limits_turns[1])
     self.mpc.set_cur_state(self.v_desired_filter.x, self.a_desired)
     x, v, a, j = self.parse_model(sm['modelV2'], self.v_model_error)
-    self.mpc.update(sm['radarState'], v_cruise, x, v, a, j, personality=self.personality)
+    self.mpc.update(sm['radarState'], frogpilot_planner.v_cruise, x, v, a, j, frogpilot_planner, personality=self.personality)
 
     self.v_desired_trajectory_full = np.interp(ModelConstants.T_IDXS, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory_full = np.interp(ModelConstants.T_IDXS, T_IDXS_MPC, self.mpc.a_solution)
@@ -152,7 +160,9 @@ class LongitudinalPlanner:
     self.a_desired = float(interp(self.dt, ModelConstants.T_IDXS[:CONTROL_N], self.a_desired_trajectory))
     self.v_desired_filter.x = self.v_desired_filter.x + self.dt * (self.a_desired + a_prev) / 2.0
 
-  def publish(self, sm, pm):
+    frogpilot_planner.update(sm['carState'], sm['controlsState'], sm['modelV2'], self.mpc, sm, v_cruise, v_ego)
+
+  def publish(self, sm, pm, frogpilot_planner):
     plan_send = messaging.new_message('longitudinalPlan')
 
     plan_send.valid = sm.all_checks(service_list=['carState', 'controlsState'])
@@ -173,3 +183,5 @@ class LongitudinalPlanner:
     longitudinalPlan.personality = self.personality
 
     pm.send('longitudinalPlan', plan_send)
+
+    frogpilot_planner.publish(sm, pm, self.mpc)

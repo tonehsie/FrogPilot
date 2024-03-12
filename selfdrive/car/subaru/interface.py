@@ -9,14 +9,16 @@ from openpilot.selfdrive.car.subaru.values import CAR, GLOBAL_ES_ADDR, LKAS_ANGL
 class CarInterface(CarInterfaceBase):
 
   @staticmethod
-  def _get_params(ret, candidate, fingerprint, car_fw, experimental_long, docs):
+  def _get_params(ret, params, candidate, fingerprint, car_fw, experimental_long, docs):
+    crosstrek_torque_increase = params.get_bool("CrosstrekTorque")
+
     ret.carName = "subaru"
     ret.radarUnavailable = True
     # for HYBRID CARS to be upstreamed, we need:
     # - replacement for ES_Distance so we can cancel the cruise control
     # - to find the Cruise_Activated bit from the car
     # - proper panda safety setup (use the correct cruise_activated bit, throttle from Throttle_Hybrid, etc)
-    ret.dashcamOnly = candidate in (PREGLOBAL_CARS | LKAS_ANGLE | HYBRID_CARS)
+    ret.dashcamOnly = candidate in (LKAS_ANGLE | HYBRID_CARS)
     ret.autoResumeSng = False
 
     # Detect infotainment message sent from the camera
@@ -47,9 +49,9 @@ class CarInterface(CarInterfaceBase):
       ret.steerRatio = 13.5
       ret.steerActuatorDelay = 0.3   # end-to-end angle controller
       ret.lateralTuning.init('pid')
-      ret.lateralTuning.pid.kf = 0.00003
+      ret.lateralTuning.pid.kf = 0.00003333 if crosstrek_torque_increase else 0.00003
       ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0., 20.], [0., 20.]]
-      ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.0025, 0.1], [0.00025, 0.01]]
+      ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.133, 0.2], [0.0133, 0.02]] if crosstrek_torque_increase else [[0.0025, 0.1], [0.00025, 0.01]]
 
     elif candidate == CAR.IMPREZA:
       ret.mass = 1568.
@@ -136,11 +138,11 @@ class CarInterface(CarInterfaceBase):
     return ret
 
   # returns a car.CarState
-  def _update(self, c):
+  def _update(self, c, frogpilot_variables):
 
-    ret = self.CS.update(self.cp, self.cp_cam, self.cp_body)
+    ret = self.CS.update(self.cp, self.cp_cam, self.cp_body, frogpilot_variables)
 
-    ret.events = self.create_common_events(ret).to_msg()
+    ret.events = self.create_common_events(ret, frogpilot_variables).to_msg()
 
     return ret
 
@@ -149,5 +151,5 @@ class CarInterface(CarInterfaceBase):
     if CP.flags & SubaruFlags.DISABLE_EYESIGHT:
       disable_ecu(logcan, sendcan, bus=2, addr=GLOBAL_ES_ADDR, com_cont_req=b'\x28\x03\x01')
 
-  def apply(self, c, now_nanos):
-    return self.CC.update(c, self.CS, now_nanos)
+  def apply(self, c, now_nanos, frogpilot_variables):
+    return self.CC.update(c, self.CS, now_nanos, frogpilot_variables)

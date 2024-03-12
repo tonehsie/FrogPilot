@@ -33,12 +33,16 @@ private:
   Params params;
 
   QTimer* timer;
+  ElidedLabel* date;
   ElidedLabel* version;
   QStackedLayout* center_layout;
   UpdateAlert *update_widget;
   OffroadAlert* alerts_widget;
   QPushButton* alert_notif;
   QPushButton* update_notif;
+
+  // FrogPilot variables
+  std::map<QString, QString> MODEL_NAME;
 };
 
 class HomeWindow : public QWidget {
@@ -68,6 +72,9 @@ private:
   BodyWindow *body;
   DriverViewWindow *driver_view;
   QStackedLayout *slayout;
+
+  // FrogPilot variables
+  Params params;
 
 private slots:
   void updateState(const UIState &s);

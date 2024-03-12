@@ -1,9 +1,11 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import Enum, IntFlag, StrEnum
 from typing import Dict, List, Union
 
 from cereal import car
+from openpilot.common.numpy_fast import interp
+from openpilot.common.params import Params
 from openpilot.selfdrive.car import dbc_dict
 from openpilot.selfdrive.car.docs_definitions import CarFootnote, CarHarness, CarInfo, CarParts, Column
 from openpilot.selfdrive.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
@@ -20,7 +22,9 @@ class CarControllerParams:
   STEER_DRIVER_ALLOWANCE = 65
   STEER_DRIVER_MULTIPLIER = 4
   STEER_DRIVER_FACTOR = 100
-  NEAR_STOP_BRAKE_PHASE = 0.5  # m/s
+  NEAR_STOP_BRAKE_PHASE = 0.25  # m/s
+  SNG_INTERCEPTOR_GAS = 18. / 255.
+  SNG_TIME = 30  # frames until the above is reached
 
   # Heartbeat for dash "Service Adaptive Cruise" and "Service Front Camera"
   ADAS_KEEPALIVE_STEP = 100
@@ -32,34 +36,63 @@ class CarControllerParams:
   # Our controller should still keep the 2 second average above
   # -3.5 m/s^2 as per planner limits
   ACCEL_MAX = 2.  # m/s^2
+  ACCEL_MAX_PLUS = 4.  # m/s^2
   ACCEL_MIN = -4.  # m/s^2
 
   def __init__(self, CP):
     # Gas/brake lookups
-    self.ZERO_GAS = 2048  # Coasting
+    self.ZERO_GAS = 6144  # Coasting
     self.MAX_BRAKE = 400  # ~ -4.0 m/s^2 with regen
 
-    if CP.carFingerprint in CAMERA_ACC_CAR:
-      self.MAX_GAS = 3400
-      self.MAX_ACC_REGEN = 1514
-      self.INACTIVE_REGEN = 1554
+    if CP.carFingerprint in CAMERA_ACC_CAR and CP.carFingerprint not in CC_ONLY_CAR:
+      self.MAX_GAS = 7496
+      self.MAX_GAS_PLUS = 8848
+      self.MAX_ACC_REGEN = 5610
+      self.INACTIVE_REGEN = 5650
       # Camera ACC vehicles have no regen while enabled.
       # Camera transitions to MAX_ACC_REGEN from ZERO_GAS and uses friction brakes instantly
       max_regen_acceleration = 0.
 
+      if CP.carFingerprint in SLOW_ACC and Params().get_bool("GasRegenCmd"):
+        self.MAX_GAS = 8650
+        self.MAX_GAS_PLUS = 8650 # Don't Stack Extra Speed
+        self.ACCEL_MAX_PLUS = 2
+
+    elif CP.carFingerprint in SDGM_CAR:
+      self.MAX_GAS = 7496
+      self.MAX_GAS_PLUS = 7496
+      self.MAX_ACC_REGEN = 5610
+      self.INACTIVE_REGEN = 5650
+      max_regen_acceleration = 0.
+
     else:
-      self.MAX_GAS = 3072  # Safety limit, not ACC max. Stock ACC >4096 from standstill.
-      self.MAX_ACC_REGEN = 1404  # Max ACC regen is slightly less than max paddle regen
-      self.INACTIVE_REGEN = 1404
+      self.MAX_GAS = 7168  # Safety limit, not ACC max. Stock ACC >8192 from standstill.
+      self.MAX_GAS_PLUS = 8191 # 8292 uses new bit, possible but not tested. Matches Twilsonco tw-main max
+      self.MAX_ACC_REGEN = 5500  # Max ACC regen is slightly less than max paddle regen
+      self.INACTIVE_REGEN = 5500
       # ICE has much less engine braking force compared to regen in EVs,
       # lower threshold removes some braking deadzone
       max_regen_acceleration = -1. if CP.carFingerprint in EV_CAR else -0.1
 
     self.GAS_LOOKUP_BP = [max_regen_acceleration, 0., self.ACCEL_MAX]
+    self.GAS_LOOKUP_BP_PLUS = [max_regen_acceleration, 0., self.ACCEL_MAX_PLUS]
     self.GAS_LOOKUP_V = [self.MAX_ACC_REGEN, self.ZERO_GAS, self.MAX_GAS]
+    self.GAS_LOOKUP_V_PLUS = [self.MAX_ACC_REGEN, self.ZERO_GAS, self.MAX_GAS_PLUS]
 
     self.BRAKE_LOOKUP_BP = [self.ACCEL_MIN, max_regen_acceleration]
     self.BRAKE_LOOKUP_V = [self.MAX_BRAKE, 0.]
+
+  # determined by letting Volt regen to a stop in L gear from 89mph,
+  # and by letting off gas and allowing car to creep, for determining
+  # the positive threshold values at very low speed
+  EV_GAS_BRAKE_THRESHOLD_BP = [1.29, 1.52, 1.55, 1.6, 1.7, 1.8, 2.0, 2.2, 2.5, 5.52, 9.6, 20.5, 23.5, 35.0] # [m/s]
+  EV_GAS_BRAKE_THRESHOLD_V = [0.0, -0.14, -0.16, -0.18, -0.215, -0.255, -0.32, -0.41, -0.5, -0.72, -0.895, -1.125, -1.145, -1.16] # [m/s^s]
+
+  def update_ev_gas_brake_threshold(self, v_ego):
+    gas_brake_threshold = interp(v_ego, self.EV_GAS_BRAKE_THRESHOLD_BP, self.EV_GAS_BRAKE_THRESHOLD_V)
+    self.EV_GAS_LOOKUP_BP = [gas_brake_threshold, max(0., gas_brake_threshold), self.ACCEL_MAX]
+    self.EV_GAS_LOOKUP_BP_PLUS = [gas_brake_threshold, max(0., gas_brake_threshold), self.ACCEL_MAX_PLUS]
+    self.EV_BRAKE_LOOKUP_BP = [self.ACCEL_MIN, gas_brake_threshold]
 
 
 class CAR(StrEnum):
@@ -77,6 +110,18 @@ class CAR(StrEnum):
   SILVERADO = "CHEVROLET SILVERADO 1500 2020"
   EQUINOX = "CHEVROLET EQUINOX 2019"
   TRAILBLAZER = "CHEVROLET TRAILBLAZER 2021"
+  # Separate car def is required when there is no ASCM
+  # (for now) unless there is a way to detect it when it has been unplugged...
+  VOLT_CC = "CHEVROLET VOLT NO ACC"
+  BOLT_CC = "CHEVROLET BOLT EV NO ACC"
+  EQUINOX_CC = "CHEVROLET EQUINOX NO ACC"
+  SUBURBAN = "CHEVROLET SUBURBAN PREMIER 2016"
+  SUBURBAN_CC = "CHEVROLET SUBURBAN NO ACC"
+  YUKON_CC = "GMC YUKON NO ACC"
+  CT6_CC = "CADILLAC CT6 NO ACC"
+  TRAILBLAZER_CC = "CHEVROLET TRAILBLAZER 2024 NO ACC"
+  XT4 = "CADILLAC XT4 2023"
+  TRAX = "CHEVROLET TRAX 2024"
 
 
 class Footnote(Enum):
@@ -119,6 +164,17 @@ CAR_INFO: Dict[str, Union[GMCarInfo, List[GMCarInfo]]] = {
   ],
   CAR.EQUINOX: GMCarInfo("Chevrolet Equinox 2019-22"),
   CAR.TRAILBLAZER: GMCarInfo("Chevrolet Trailblazer 2021-22"),
+
+  CAR.VOLT_CC: GMCarInfo("Chevrolet Volt No ACC"),
+  CAR.BOLT_CC: GMCarInfo("Chevrolet Bolt No ACC"),
+  CAR.EQUINOX_CC: GMCarInfo("Chevrolet Equinox No ACC"),
+  CAR.SUBURBAN: GMCarInfo("Chevrolet Suburban Premier 2016-2020"),
+  CAR.SUBURBAN_CC: GMCarInfo("Chevrolet Suburban No ACC"),
+  CAR.YUKON_CC: GMCarInfo("GMC Yukon No ACC"),
+  CAR.CT6_CC: GMCarInfo("Cadillac CT6 No ACC"),
+  CAR.TRAILBLAZER_CC: GMCarInfo("Chevrolet Trailblazer 2024 No ACC"),
+  CAR.XT4: GMCarInfo("Cadillac XT4 2023", "Driver Assist Package"),
+  CAR.TRAX: GMCarInfo("Chevrolet TRAX 2024"),
 }
 
 
@@ -143,6 +199,12 @@ class CanBus:
   CHASSIS = 2
   LOOPBACK = 128
   DROPPED = 192
+
+class GMFlags(IntFlag):
+  PEDAL_LONG = 1
+  CC_LONG = 2
+  NO_CAMERA = 4
+  NO_ACCELERATOR_POS_MSG = 8
 
 
 # In a Data Module, an identifier is a string used to recognize an object,
@@ -182,10 +244,20 @@ FW_QUERY_CONFIG = FwQueryConfig(
 )
 
 DBC: Dict[str, Dict[str, str]] = defaultdict(lambda: dbc_dict('gm_global_a_powertrain_generated', 'gm_global_a_object', chassis_dbc='gm_global_a_chassis'))
+DBC[CAR.VOLT] = dbc_dict('gm_global_a_powertrain_volt', 'gm_global_a_object', chassis_dbc='gm_global_a_chassis')
+DBC[CAR.VOLT_CC] = DBC[CAR.VOLT]
 
-EV_CAR = {CAR.VOLT, CAR.BOLT_EUV}
+EV_CAR = {CAR.VOLT, CAR.BOLT_EUV, CAR.VOLT_CC, CAR.BOLT_CC}
+CC_ONLY_CAR = {CAR.VOLT_CC, CAR.BOLT_CC, CAR.EQUINOX_CC, CAR.SUBURBAN_CC, CAR.YUKON_CC, CAR.CT6_CC, CAR.TRAILBLAZER_CC}
+
+# We're integrated at the Safety Data Gateway Module on these cars
+SDGM_CAR = {CAR.XT4}
+
+# Slow acceleration cars
+SLOW_ACC = {CAR.SILVERADO}
 
 # We're integrated at the camera with VOACC on these cars (instead of ASCM w/ OBD-II harness)
-CAMERA_ACC_CAR = {CAR.BOLT_EUV, CAR.SILVERADO, CAR.EQUINOX, CAR.TRAILBLAZER}
+CAMERA_ACC_CAR = {CAR.BOLT_EUV, CAR.SILVERADO, CAR.EQUINOX, CAR.TRAILBLAZER, CAR.TRAX}
+CAMERA_ACC_CAR.update({CAR.VOLT_CC, CAR.BOLT_CC, CAR.EQUINOX_CC, CAR.YUKON_CC, CAR.CT6_CC, CAR.TRAILBLAZER_CC})
 
 STEER_THRESHOLD = 1.0

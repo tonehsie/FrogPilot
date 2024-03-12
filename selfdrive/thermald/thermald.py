@@ -19,7 +19,7 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import DT_TRML
 from openpilot.selfdrive.controls.lib.alertmanager import set_offroad_alert
 from openpilot.system.hardware import HARDWARE, TICI, AGNOS
-from openpilot.system.loggerd.config import get_available_percent
+from openpilot.system.loggerd.config import get_available_bytes, get_available_percent, get_used_bytes
 from openpilot.selfdrive.statsd import statlog
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.thermald.power_monitoring import PowerMonitoring
@@ -164,7 +164,7 @@ def hw_state_thread(end_event, hw_queue):
 
 
 def thermald_thread(end_event, hw_queue) -> None:
-  pm = messaging.PubMaster(['deviceState'])
+  pm = messaging.PubMaster(['deviceState', 'frogpilotDeviceState'])
   sm = messaging.SubMaster(["peripheralState", "gpsLocationExternal", "controlsState", "pandaStates"], poll="pandaStates")
 
   count = 0
@@ -242,6 +242,13 @@ def thermald_thread(end_event, hw_queue) -> None:
     except queue.Empty:
       pass
 
+    fpmsg = messaging.new_message('frogpilotDeviceState')
+
+    fpmsg.frogpilotDeviceState.freeSpace = round(get_available_bytes(default=32.0 * (2 ** 30)) / (2 ** 30))
+    fpmsg.frogpilotDeviceState.usedSpace = round(get_used_bytes(default=0.0 * (2 ** 30)) / (2 ** 30))
+
+    pm.send("frogpilotDeviceState", fpmsg)
+
     msg.deviceState.freeSpacePercent = get_available_percent(default=100.0)
     msg.deviceState.memoryUsagePercent = int(round(psutil.virtual_memory().percent))
     msg.deviceState.gpuUsagePercent = int(round(HARDWARE.get_gpu_usage_percent()))
@@ -290,9 +297,12 @@ def thermald_thread(end_event, hw_queue) -> None:
       elif current_band.max_temp is not None and all_comp_temp > current_band.max_temp:
         thermal_status = list(THERMAL_BANDS.keys())[band_idx + 1]
 
+    if params.get_bool("FireTheBabysitter") and params.get_bool("MuteOverheated"):
+      thermal_status = ThermalStatus.green
+
     # **** starting logic ****
 
-    startup_conditions["up_to_date"] = params.get("Offroad_ConnectivityNeeded") is None or params.get_bool("DisableUpdates") or params.get_bool("SnoozeUpdate")
+    startup_conditions["up_to_date"] = (params.get("OfflineMode") and params.get("FireTheBabysitter")) or params.get("Offroad_ConnectivityNeeded") is None or params.get_bool("DisableUpdates") or params.get_bool("SnoozeUpdate")
     startup_conditions["not_uninstalling"] = not params.get_bool("DoUninstall")
     startup_conditions["accepted_terms"] = params.get("HasAcceptedTerms") == terms_version
 

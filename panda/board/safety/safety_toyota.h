@@ -37,6 +37,11 @@ const LongitudinalLimits TOYOTA_LONG_LIMITS = {
   .min_accel = -3500,  // -3.5 m/s2
 };
 
+const LongitudinalLimits TOYOTA_LONG_LIMITS_SPORT = {
+  .max_accel = 4000,   // 4.0 m/s2
+  .min_accel = -3500,  // -3.5 m/s2
+};
+
 // panda interceptor threshold needs to be equivalent to openpilot threshold to avoid controls mismatches
 // If thresholds are mismatched then it is possible for panda to see the gas fall and rise while openpilot is in the pre-enabled state
 // Threshold calculated from DBC gains: round((((15 + 75.555) / 0.159375) + ((15 + 151.111) / 0.159375)) / 2) = 805
@@ -53,6 +58,7 @@ const int TOYOTA_GAS_INTERCEPTOR_THRSLD = 805;
   {0x128, 1, 6}, {0x141, 1, 4}, {0x160, 1, 8}, {0x161, 1, 7}, {0x470, 1, 4},  /* DSU bus 1 */                                               \
   {0x411, 0, 8},  /* PCS_HUD */                                                                                                             \
   {0x750, 0, 8},  /* radar diagnostic address */                                                                                            \
+  {0x1D3, 0, 8},                                                                                                                            \
 
 const CanMsg TOYOTA_TX_MSGS[] = {
   TOYOTA_COMMON_TX_MSGS
@@ -71,6 +77,7 @@ const CanMsg TOYOTA_INTERCEPTOR_TX_MSGS[] = {
   {.msg = {{ 0xaa, 0, 8, .check_checksum = false, .frequency = 83U}, { 0 }, { 0 }}},                        \
   {.msg = {{0x260, 0, 8, .check_checksum = true, .quality_flag = (lta), .frequency = 50U}, { 0 }, { 0 }}},  \
   {.msg = {{0x1D2, 0, 8, .check_checksum = true, .frequency = 33U}, { 0 }, { 0 }}},                         \
+  {.msg = {{0x1D3, 0, 8, .check_checksum = true, .frequency = 33U}, { 0 }, { 0 }}},                         \
   {.msg = {{0x224, 0, 8, .check_checksum = false, .frequency = 40U},                                        \
            {0x226, 0, 8, .check_checksum = false, .frequency = 40U}, { 0 }}},                               \
 
@@ -176,6 +183,9 @@ static void toyota_rx_hook(const CANPacket_t *to_push) {
         update_sample(&angle_meas, angle_meas_new);
       }
     }
+    if (addr == 0x1D3) {
+      acc_main_on = GET_BIT(to_push, 15U);
+    }
 
     // enter controls on rising edge of ACC, exit controls on ACC off
     // exit controls on rising edge of gas press
@@ -228,6 +238,8 @@ static void toyota_rx_hook(const CANPacket_t *to_push) {
 }
 
 static bool toyota_tx_hook(const CANPacket_t *to_send) {
+  sport_mode = alternative_experience & ALT_EXP_RAISE_LONGITUDINAL_LIMITS_TO_ISO_MAX;
+
   bool tx = true;
   int addr = GET_ADDR(to_send);
   int bus = GET_BUS(to_send);
@@ -248,7 +260,11 @@ static bool toyota_tx_hook(const CANPacket_t *to_send) {
       desired_accel = to_signed(desired_accel, 16);
 
       bool violation = false;
-      violation |= longitudinal_accel_checks(desired_accel, TOYOTA_LONG_LIMITS);
+      if (sport_mode) {
+        violation |= longitudinal_accel_checks(desired_accel, TOYOTA_LONG_LIMITS_SPORT);
+      } else {
+        violation |= longitudinal_accel_checks(desired_accel, TOYOTA_LONG_LIMITS);
+      }
 
       // only ACC messages that cancel are allowed when openpilot is not controlling longitudinal
       if (toyota_stock_longitudinal) {

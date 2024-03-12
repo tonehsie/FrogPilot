@@ -7,6 +7,7 @@
 
 #include "selfdrive/ui/qt/offroad/experimental_mode.h"
 #include "selfdrive/ui/qt/util.h"
+#include "selfdrive/ui/qt/widgets/drive_stats.h"
 #include "selfdrive/ui/qt/widgets/prime.h"
 
 #ifdef ENABLE_MAPS
@@ -91,6 +92,7 @@ void HomeWindow::mousePressEvent(QMouseEvent* e) {
   // Handle sidebar collapsing
   if ((onroad->isVisible() || body->isVisible()) && (!sidebar->isVisible() || e->x() > sidebar->width())) {
     sidebar->setVisible(!sidebar->isVisible() && !onroad->isMapVisible());
+    params.putBool("Sidebar", sidebar->isVisible());
   }
 }
 
@@ -130,6 +132,9 @@ OffroadHome::OffroadHome(QWidget* parent) : QFrame(parent) {
   QObject::connect(alert_notif, &QPushButton::clicked, [=] { center_layout->setCurrentIndex(2); });
   header_layout->addWidget(alert_notif, 0, Qt::AlignHCenter | Qt::AlignLeft);
 
+  date = new ElidedLabel();
+  header_layout->addWidget(date, 0, Qt::AlignHCenter | Qt::AlignLeft);
+
   version = new ElidedLabel();
   header_layout->addWidget(version, 0, Qt::AlignHCenter | Qt::AlignRight);
 
@@ -153,11 +158,12 @@ OffroadHome::OffroadHome(QWidget* parent) : QFrame(parent) {
     left_widget->addWidget(new QWidget);
 #endif
     left_widget->addWidget(new PrimeAdWidget);
+    left_widget->addWidget(new DriveStats);
     left_widget->setStyleSheet("border-radius: 10px;");
 
-    left_widget->setCurrentIndex(uiState()->hasPrime() ? 0 : 1);
+    left_widget->setCurrentIndex(params.getBool("DriveStats") ? 2 : uiState()->hasPrime() ? 0 : 1);
     connect(uiState(), &UIState::primeChanged, [=](bool prime) {
-      left_widget->setCurrentIndex(prime ? 0 : 1);
+      left_widget->setCurrentIndex(params.getBool("DriveStats") ? 2 : uiState()->hasPrime() ? 0 : 1);
     });
 
     home_layout->addWidget(left_widget, 1);
@@ -212,6 +218,13 @@ OffroadHome::OffroadHome(QWidget* parent) : QFrame(parent) {
       font-size: 55px;
     }
   )");
+
+  // Set the model name
+  MODEL_NAME = {
+    {"los-angeles", "Los Angeles"},
+    {"certified-herbalist", "Certified Herbalist"},
+    {"recertified-herbalist", "Recertified Herbalist"},
+  };
 }
 
 void OffroadHome::showEvent(QShowEvent *event) {
@@ -224,7 +237,10 @@ void OffroadHome::hideEvent(QHideEvent *event) {
 }
 
 void OffroadHome::refresh() {
-  version->setText(getBrand() + " " +  QString::fromStdString(params.get("UpdaterCurrentDescription")));
+  QString model = QString::fromStdString(params.get("Model"));
+
+  date->setText(QLocale(uiState()->language.mid(5)).toString(QDateTime::currentDateTime(), "dddd, MMMM d"));
+  version->setText(getBrand() + " v" + getVersion().left(14).trimmed() + " - " + MODEL_NAME[model]);
 
   bool updateAvailable = update_widget->refresh();
   int alerts = alerts_widget->refresh();

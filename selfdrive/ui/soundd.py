@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import os
 import time
 import wave
 
@@ -8,6 +9,7 @@ from typing import Dict, Optional, Tuple
 from cereal import car, messaging
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.retry import retry
 from openpilot.common.swaglog import cloudlog
@@ -39,6 +41,13 @@ sound_list: Dict[int, Tuple[str, Optional[int], float]] = {
 
   AudibleAlert.warningSoft: ("warning_soft.wav", None, MAX_VOLUME),
   AudibleAlert.warningImmediate: ("warning_immediate.wav", None, MAX_VOLUME),
+
+  # Random Events
+  AudibleAlert.angry: ("angry.wav", 1, MAX_VOLUME),
+  AudibleAlert.fart: ("fart.wav", 1, MAX_VOLUME),
+  AudibleAlert.firefox: ("firefox.wav", 1, MAX_VOLUME),
+  AudibleAlert.noice: ("noice.wav", 1, MAX_VOLUME),
+  AudibleAlert.uwu: ("uwu.wav", 1, MAX_VOLUME),
 }
 
 def check_controls_timeout_alert(sm):
@@ -53,6 +62,14 @@ def check_controls_timeout_alert(sm):
 
 class Soundd:
   def __init__(self):
+    # FrogPilot variables
+    self.params = Params()
+    self.params_memory = Params("/dev/shm/params")
+
+    self.random_events_directory = BASEDIR + "/selfdrive/frogpilot/assets/random_events/sounds/"
+
+    self.update_frogpilot_params()
+
     self.load_sounds()
 
     self.current_alert = AudibleAlert.none
@@ -70,7 +87,10 @@ class Soundd:
     for sound in sound_list:
       filename, play_count, volume = sound_list[sound]
 
-      wavefile = wave.open(BASEDIR + "/selfdrive/assets/sounds/" + filename, 'r')
+      if os.path.exists(os.path.join(self.random_events_directory, filename)):
+        wavefile = wave.open(self.random_events_directory + filename, 'r')
+      else:
+        wavefile = wave.open(self.sound_directory + filename, 'r')
 
       assert wavefile.getnchannels() == 1
       assert wavefile.getsampwidth() == 2
@@ -146,9 +166,16 @@ class Soundd:
       while True:
         sm.update(0)
 
-        if sm.updated['microphone'] and self.current_alert == AudibleAlert.none: # only update volume filter when not playing alert
+        if sm.updated['microphone'] and self.current_alert == AudibleAlert.none and not self.alert_volume_control: # only update volume filter when not playing alert
           self.spl_filter_weighted.update(sm["microphone"].soundPressureWeightedDb)
           self.current_volume = self.calculate_volume(float(self.spl_filter_weighted.x))
+
+        elif self.alert_volume_control and self.current_alert in self.volume_map:
+          self.current_volume = self.volume_map[self.current_alert] / 100.0
+
+        # Increase the volume for Random Events
+        elif self.current_alert in self.random_events_map:
+          self.current_volume = self.random_events_map[self.current_alert]
 
         self.get_audible_alert(sm)
 
@@ -156,6 +183,67 @@ class Soundd:
 
         assert stream.active
 
+        # Update FrogPilot parameters
+        if self.params_memory.get_bool("FrogPilotTogglesUpdated"):
+          self.update_frogpilot_params()
+
+  def update_frogpilot_params(self):
+    self.random_events_map = {
+      AudibleAlert.angry: MAX_VOLUME,
+      AudibleAlert.fart: MAX_VOLUME,
+      AudibleAlert.firefox: MAX_VOLUME,
+      AudibleAlert.noice: MAX_VOLUME,
+    }
+
+    self.alert_volume_control = self.params.get_bool("AlertVolumeControl")
+
+    self.volume_map = {
+      AudibleAlert.engage: self.params.get_int("EngageVolume"),
+      AudibleAlert.disengage: self.params.get_int("DisengageVolume"),
+      AudibleAlert.refuse: self.params.get_int("RefuseVolume"),
+
+      AudibleAlert.prompt: self.params.get_int("PromptVolume"),
+      AudibleAlert.promptRepeat: self.params.get_int("PromptVolume"),
+      AudibleAlert.promptDistracted: self.params.get_int("PromptDistractedVolume"),
+
+      AudibleAlert.warningSoft: self.params.get_int("WarningSoftVolume"),
+      AudibleAlert.warningImmediate: self.params.get_int("WarningImmediateVolume")
+    }
+
+    custom_theme = self.params.get_bool("CustomTheme")
+    custom_sounds = self.params.get_int("CustomSounds") if custom_theme else 0
+
+    theme_configuration = {
+      1: "frog_theme",
+      2: "tesla_theme",
+      3: "stalin_theme"
+    }
+
+    holiday_themes = custom_theme and self.params.get_bool("HolidayThemes")
+    current_holiday_theme = self.params.get_int("CurrentHolidayTheme") if holiday_themes else 0
+
+    holiday_theme_configuration = {
+      1: "april_fools",
+      2: "christmas",
+      3: "cinco_de_mayo",
+      4: "easter",
+      5: "fourth_of_july",
+      6: "halloween",
+      7: "new_years_day",
+      8: "st_patricks_day",
+      9: "thanksgiving",
+      10: "valentines_day",
+      11: "world_frog_day",
+    }
+
+    if current_holiday_theme != 0:
+      theme_name = holiday_theme_configuration.get(current_holiday_theme)
+      self.sound_directory = BASEDIR + ("/selfdrive/frogpilot/assets/holiday_themes/" + theme_name + "/sounds/")
+    else:
+      theme_name = theme_configuration.get(custom_sounds)
+      self.sound_directory = BASEDIR + ("/selfdrive/frogpilot/assets/custom_themes/" + theme_name + "/sounds/" if custom_sounds else "/selfdrive/assets/sounds/")
+
+    self.load_sounds()
 
 def main():
   s = Soundd()

@@ -47,7 +47,7 @@ def get_can_messages(CP, gearbox_msg):
   if CP.flags & HondaFlags.BOSCH_ALT_BRAKE:
     messages.append(("BRAKE_MODULE", 50))
 
-  if CP.carFingerprint in (HONDA_BOSCH | {CAR.CIVIC, CAR.ODYSSEY, CAR.ODYSSEY_CHN}):
+  if CP.carFingerprint in (HONDA_BOSCH | {CAR.CIVIC, CAR.ODYSSEY, CAR.ODYSSEY_CHN, CAR.CLARITY}):
     messages.append(("EPB_STATUS", 50))
 
   if CP.carFingerprint in HONDA_BOSCH:
@@ -78,6 +78,8 @@ def get_can_messages(CP, gearbox_msg):
 
   if CP.carFingerprint in HONDA_BOSCH_RADARLESS:
     messages.append(("CRUISE_FAULT_STATUS", 50))
+  elif CP.carFingerprint == CAR.CLARITY:
+    messages.append(("BRAKE_ERROR", 100)),
   elif CP.openpilotLongitudinalControl:
     messages.append(("STANDSTILL", 50))
 
@@ -108,7 +110,7 @@ class CarState(CarStateBase):
     # However, on cars without a digital speedometer this is not always present (HRV, FIT, CRV 2016, ILX and RDX)
     self.dash_speed_seen = False
 
-  def update(self, cp, cp_cam, cp_body):
+  def update(self, cp, cp_cam, cp_body, frogpilot_variables):
     ret = car.CarState.new_message()
 
     # car params
@@ -147,6 +149,8 @@ class CarState(CarStateBase):
 
     if self.CP.carFingerprint in HONDA_BOSCH_RADARLESS:
       ret.accFaulted = bool(cp.vl["CRUISE_FAULT_STATUS"]["CRUISE_FAULT"])
+    elif self.CP.carFingerprint == CAR.CLARITY:
+      ret.accFaulted = bool(cp.vl["BRAKE_ERROR"]["BRAKE_ERROR_1"] or cp.vl["BRAKE_ERROR"]["BRAKE_ERROR_2"])
     else:
       # On some cars, these two signals are always 1, this flag is masking a bug in release
       # FIXME: find and set the ACC faulted signals on more platforms
@@ -185,7 +189,7 @@ class CarState(CarStateBase):
     ret.brakeHoldActive = cp.vl["VSA_STATUS"]["BRAKE_HOLD_ACTIVE"] == 1
 
     # TODO: set for all cars
-    if self.CP.carFingerprint in (HONDA_BOSCH | {CAR.CIVIC, CAR.ODYSSEY, CAR.ODYSSEY_CHN}):
+    if self.CP.carFingerprint in (HONDA_BOSCH | {CAR.CIVIC, CAR.ODYSSEY, CAR.ODYSSEY_CHN, CAR.CLARITY}):
       ret.parkingBrake = cp.vl["EPB_STATUS"]["EPB_STATE"] != 0
 
     gear = int(cp.vl[self.gearbox_msg]["GEAR_SHIFTER"])
@@ -246,7 +250,8 @@ class CarState(CarStateBase):
       if self.CP.carFingerprint not in HONDA_BOSCH_RADARLESS:
         ret.stockAeb = (not self.CP.openpilotLongitudinalControl) and bool(cp.vl["ACC_CONTROL"]["AEB_STATUS"] and cp.vl["ACC_CONTROL"]["ACCEL_COMMAND"] < -1e-5)
     else:
-      ret.stockAeb = bool(cp_cam.vl["BRAKE_COMMAND"]["AEB_REQ_1"] and cp_cam.vl["BRAKE_COMMAND"]["COMPUTER_BRAKE"] > 1e-5)
+      aeb_sig = "COMPUTER_BRAKE_ALT" if self.CP.carFingerprint == CAR.CLARITY else "COMPUTER_BRAKE"
+      ret.stockAeb = bool(cp_cam.vl["BRAKE_COMMAND"]["AEB_REQ_1"] and cp_cam.vl["BRAKE_COMMAND"][aeb_sig] > 1e-5)
 
     self.acc_hud = False
     self.lkas_hud = False
@@ -262,6 +267,35 @@ class CarState(CarStateBase):
       # more info here: https://github.com/commaai/openpilot/pull/1867
       ret.leftBlindspot = cp_body.vl["BSM_STATUS_LEFT"]["BSM_ALERT"] == 1
       ret.rightBlindspot = cp_body.vl["BSM_STATUS_RIGHT"]["BSM_ALERT"] == 1
+
+    # Driving personalities function
+    if frogpilot_variables.personalities_via_wheel and ret.cruiseState.available:
+      # Sync with the onroad UI button
+      if self.fpf.personality_changed_via_ui:
+        self.personality_profile = self.fpf.current_personality
+        self.previous_personality_profile = self.personality_profile
+        self.fpf.reset_personality_changed_param()
+
+      # Change personality upon steering wheel button press
+      distance_button = self.cruise_setting == 3
+
+      if distance_button and not self.distance_previously_pressed:
+        self.personality_profile = (self.previous_personality_profile + 2) % 3
+      self.distance_previously_pressed = distance_button
+
+      if self.personality_profile != self.previous_personality_profile:
+        self.fpf.distance_button_function(self.personality_profile)
+        self.previous_personality_profile = self.personality_profile
+
+    # Toggle Experimental Mode from steering wheel function
+    if frogpilot_variables.experimental_mode_via_lkas and ret.cruiseState.available:
+      lkas_pressed = self.cruise_setting == 1
+      if lkas_pressed and not self.lkas_previously_pressed:
+        if frogpilot_variables.conditional_experimental_mode:
+          self.fpf.update_cestatus_lkas()
+        else:
+          self.fpf.update_experimental_mode()
+      self.lkas_previously_pressed = lkas_pressed
 
     return ret
 

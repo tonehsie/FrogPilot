@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import List, Union, Optional
 from markdown_it import MarkdownIt
+from zoneinfo import ZoneInfo
 
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
@@ -237,6 +238,9 @@ class Updater:
     self.branches = defaultdict(lambda: '')
     self._has_internet: bool = False
 
+    # FrogPilot variables
+    self.disable_internet_check = self.params.get_bool("OfflineMode") and self.params.get_bool("FireTheBabysitter")
+
   @property
   def has_internet(self) -> bool:
     return self._has_internet
@@ -325,6 +329,8 @@ class Updater:
       set_offroad_alert(alert, False)
 
     now = datetime.datetime.utcnow()
+    if self.disable_internet_check:
+      last_update = now
     dt = now - last_update
     if failed_count > 15 and exception is not None and self.has_internet:
       if is_tested_branch():
@@ -405,6 +411,7 @@ class Updater:
     finalize_update()
     cloudlog.info("finalize success!")
 
+    self.params.put("Updated", datetime.datetime.now().astimezone(ZoneInfo('America/Phoenix')).strftime("%B %d, %Y - %I:%M%p").encode('utf8'))
 
 def main() -> None:
   params = Params()
@@ -428,9 +435,9 @@ def main() -> None:
     if Path(os.path.join(STAGING_ROOT, "old_openpilot")).is_dir():
       cloudlog.event("update installed")
 
-    if not params.get("InstallDate"):
-      t = datetime.datetime.utcnow().isoformat()
-      params.put("InstallDate", t.encode('utf8'))
+    # Format InstallDate to Phoenix time zone with full date-time
+    if params.get("InstallDate") is None or params.get("Updated") is None:
+      params.put("InstallDate", datetime.datetime.now().astimezone(ZoneInfo('America/Phoenix')).strftime("%B %d, %Y - %I:%M%p").encode('utf8'))
 
     updater = Updater()
     update_failed_count = 0 # TODO: Load from param?
@@ -464,21 +471,22 @@ def main() -> None:
         update_failed_count += 1
 
         # check for update
-        params.put("UpdaterState", "checking...")
-        updater.check_for_update()
+        if params.get_int("UpdateSchedule") != 0 or params.get_bool("ManualUpdateInitiated"):
+          params.put("UpdaterState", "checking...")
+          updater.check_for_update()
 
-        # download update
-        last_fetch = read_time_from_param(params, "UpdaterLastFetchTime")
-        timed_out = last_fetch is None or (datetime.datetime.utcnow() - last_fetch > datetime.timedelta(days=3))
-        user_requested_fetch = wait_helper.user_request == UserRequest.FETCH
-        if params.get_bool("NetworkMetered") and not timed_out and not user_requested_fetch:
-          cloudlog.info("skipping fetch, connection metered")
-        elif wait_helper.user_request == UserRequest.CHECK:
-          cloudlog.info("skipping fetch, only checking")
-        else:
-          updater.fetch_update()
-          write_time_to_param(params, "UpdaterLastFetchTime")
-        update_failed_count = 0
+          # download update
+          last_fetch = read_time_from_param(params, "UpdaterLastFetchTime")
+          timed_out = last_fetch is None or (datetime.datetime.utcnow() - last_fetch > datetime.timedelta(days=3))
+          user_requested_fetch = wait_helper.user_request == UserRequest.FETCH
+          if params.get_bool("NetworkMetered") and not timed_out and not user_requested_fetch:
+            cloudlog.info("skipping fetch, connection metered")
+          elif wait_helper.user_request == UserRequest.CHECK:
+            cloudlog.info("skipping fetch, only checking")
+          else:
+            updater.fetch_update()
+            write_time_to_param(params, "UpdaterLastFetchTime")
+          update_failed_count = 0
       except subprocess.CalledProcessError as e:
         cloudlog.event(
           "update process failed",

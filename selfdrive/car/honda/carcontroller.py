@@ -94,7 +94,7 @@ def process_hud_alert(hud_alert):
 
 
 HUDData = namedtuple("HUDData",
-                     ["pcm_accel", "v_cruise", "lead_visible",
+                     ["pcm_accel", "v_cruise", "lead_visible", "personality_profile",
                       "lanes_visible", "fcw", "acc_alert", "steer_required"])
 
 
@@ -124,7 +124,7 @@ class CarController:
     self.brake = 0.0
     self.last_steer = 0.0
 
-  def update(self, CC, CS, now_nanos):
+  def update(self, CC, CS, now_nanos, frogpilot_variables):
     actuators = CC.actuators
     hud_control = CC.hudControl
     conversion = hondacan.get_cruise_speed_conversion(self.CP.carFingerprint, CS.is_metric)
@@ -214,7 +214,10 @@ class CarController:
         ts = self.frame * DT_CTRL
 
         if self.CP.carFingerprint in HONDA_BOSCH:
-          self.accel = clip(accel, self.params.BOSCH_ACCEL_MIN, self.params.BOSCH_ACCEL_MAX)
+          if frogpilot_variables.sport_plus:
+            self.accel = clip(accel, self.params.BOSCH_ACCEL_MIN, self.params.BOSCH_ACCEL_MAX_PLUS)
+          else:
+            self.accel = clip(accel, self.params.BOSCH_ACCEL_MIN, self.params.BOSCH_ACCEL_MAX)
           self.gas = interp(accel, self.params.BOSCH_GAS_LOOKUP_BP, self.params.BOSCH_GAS_LOOKUP_V)
 
           stopping = actuators.longControlState == LongCtrlState.stopping
@@ -248,9 +251,9 @@ class CarController:
 
     # Send dashboard UI commands.
     if self.frame % 10 == 0:
-      hud = HUDData(int(pcm_accel), int(round(hud_v_cruise)), hud_control.leadVisible,
+      hud = HUDData(int(pcm_accel), int(round(hud_v_cruise)), hud_control.leadVisible, CS.personality_profile + 1,
                     hud_control.lanesVisible, fcw_display, acc_alert, steer_required)
-      can_sends.extend(hondacan.create_ui_commands(self.packer, self.CP, CC.enabled, pcm_speed, hud, CS.is_metric, CS.acc_hud, CS.lkas_hud))
+      can_sends.extend(hondacan.create_ui_commands(self.packer, self.CP, CC.enabled, pcm_speed, hud, CS.is_metric, CS.acc_hud, CS.lkas_hud, CC.latActive))
 
       if self.CP.openpilotLongitudinalControl and self.CP.carFingerprint not in HONDA_BOSCH:
         self.speed = pcm_speed
