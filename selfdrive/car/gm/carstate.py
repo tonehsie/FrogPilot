@@ -214,7 +214,10 @@ class CarState(CarStateBase):
         lkas_pressed = pt_cp.vl["ASCMSteeringButton"]["LKAButton"]
 
       if lkas_pressed and not self.lkas_previously_pressed:
-        self.fpf.lkas_button_function(frogpilot_variables.conditional_experimental_mode)
+        if frogpilot_variables.conditional_experimental_mode:
+          self.fpf.update_cestatus_lkas()
+        else:
+          self.fpf.update_experimental_mode()
       self.lkas_previously_pressed = lkas_pressed
 
     return ret

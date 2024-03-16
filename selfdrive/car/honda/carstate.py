@@ -291,7 +291,10 @@ class CarState(CarStateBase):
     if frogpilot_variables.experimental_mode_via_lkas and ret.cruiseState.available:
       lkas_pressed = self.cruise_setting == 1
       if lkas_pressed and not self.lkas_previously_pressed:
-        self.fpf.lkas_button_function(frogpilot_variables.conditional_experimental_mode)
+        if frogpilot_variables.conditional_experimental_mode:
+          self.fpf.update_cestatus_lkas()
+        else:
+          self.fpf.update_experimental_mode()
       self.lkas_previously_pressed = lkas_pressed
 
     return ret

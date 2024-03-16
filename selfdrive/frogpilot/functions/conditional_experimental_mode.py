@@ -1,12 +1,9 @@
 from openpilot.common.conversions import Conversions as CV
 from openpilot.common.numpy_fast import interp
 
-from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import CRUISING_SPEED, MovingAverageCalculator
+from openpilot.selfdrive.frogpilot.functions.frogpilot_functions import CITY_SPEED_LIMIT, CRUISING_SPEED, MovingAverageCalculator, PROBABILITY
 
 from openpilot.selfdrive.frogpilot.functions.speed_limit_controller import SpeedLimitController
-
-CITY_SPEED_LIMIT = 25  # Speed limit for turn signal check
-PROBABILITY = 0.6  # 60% chance of condition being true
 
 # Lookup table for stop sign / stop light detection
 SLOW_DOWN_BP = [0., 10., 20., 30., 40., 50., 55., 60.]
@@ -49,19 +46,19 @@ class ConditionalExperimentalMode:
 
     # Update Experimental Mode based on the current driving conditions
     condition_met = self.check_conditions(carState, frogpilotNavigation, lead, modelData, stop_distance, v_ego)
-    if ((not self.experimental_mode and condition_met and overridden not in (1, 3)) or overridden in (2, 4)) and enabled:
+    if ((not self.experimental_mode and condition_met and overridden not in (1, 3, 5)) or overridden in (2, 4, 6)) and enabled:
       self.experimental_mode = True
-    elif (self.experimental_mode and not condition_met and overridden not in (2, 4)) or overridden in (1, 3) or not enabled:
+    elif (self.experimental_mode and not condition_met and overridden not in (2, 4, 6)) or overridden in (1, 3, 5) or not enabled:
       self.experimental_mode = False
       self.status_value = 0
 
     # Update the onroad status bar
-    self.status_value = overridden if overridden in (1, 2, 3, 4) else self.status_value
+    self.status_value = overridden if overridden in (1, 2, 3, 4, 5, 6) else self.status_value
     if self.status_value != self.previous_status_value:
       self.params_memory.put_int("CEStatus", self.status_value)
       self.previous_status_value = self.status_value
 
-    self.update_conditions(lead, modelData, radarState, road_curvature, t_follow, v_ego, v_lead)
+    self.update_conditions(lead, modelData, radarState, road_curvature, stop_distance, t_follow, v_ego, v_lead)
 
   # Check conditions for the appropriate state of Experimental Mode
   def check_conditions(self, carState, frogpilotNavigation, lead, modelData, stop_distance, v_ego):
@@ -70,51 +67,51 @@ class ConditionalExperimentalMode:
       return self.experimental_mode
 
     # Keep Experimental Mode active if stopping for a red light
-    if self.status_value == 13 and self.slowing_down(v_ego) and lead.dRel > stop_distance:
+    if self.status_value == 15 and self.slowing_down(v_ego):
       return True
 
     # Navigation check
-    if self.navigation and (frogpilotNavigation.approachingIntersection or frogpilotNavigation.approachingTurn) and (self.navigation_lead or not self.lead_detected):
-      self.status_value = 5 if frogpilotNavigation.approachingIntersection else 6
+    if self.navigation and modelData.navEnabled and (frogpilotNavigation.approachingIntersection or frogpilotNavigation.approachingTurn) and (self.navigation_lead or not self.lead_detected):
+      self.status_value = 7 if frogpilotNavigation.approachingIntersection else 8
       return True
 
     # Speed Limit Controller check
     if SpeedLimitController.experimental_mode:
-      self.status_value = 7
+      self.status_value = 9
       return True
 
     # Speed check
     if (not self.lead_detected and v_ego <= self.limit) or (self.lead_detected and v_ego <= self.limit_lead):
-      self.status_value = 8 if self.lead_detected else 9
+      self.status_value = 10 if self.lead_detected else 11
       return True
 
     # Slower lead check
     if self.slower_lead and self.slower_lead_detected:
-      self.status_value = 10
+      self.status_value = 12
       return True
 
     # Turn signal check
     if self.signal and v_ego <= CITY_SPEED_LIMIT and (carState.leftBlinker or carState.rightBlinker):
-      self.status_value = 11
+      self.status_value = 13
       return True
 
     # Road curvature check
     if self.curves and self.curve_detected:
-      self.status_value = 12
+      self.status_value = 14
       return True
 
     # Stop sign and light check
     if self.stop_lights and self.red_light_detected:
-      self.status_value = 13
+      self.status_value = 15
       return True
 
     return False
 
-  def update_conditions(self, lead, modelData, radarState, road_curvature, t_follow, v_ego, v_lead):
+  def update_conditions(self, lead, modelData, radarState, road_curvature, stop_distance, t_follow, v_ego, v_lead):
     self.lead_detection(lead)
     self.lead_slowing_down(lead, t_follow, v_lead)
     self.road_curvature(road_curvature)
-    self.slow_lead(lead, t_follow, v_ego, v_lead)
+    self.slow_lead(lead, stop_distance, t_follow, v_ego, v_lead)
     self.stop_sign_and_light(modelData, v_ego)
 
   # Lead detection
@@ -128,7 +125,7 @@ class ConditionalExperimentalMode:
     if self.lead_detected:
       lead_close = lead.dRel <= v_lead * t_follow
       lead_slowing_down = v_lead < self.previous_v_lead
-      lead_stopped = v_lead <= 0
+      lead_stopped = v_lead < 1
 
       self.previous_v_lead = v_lead
 
@@ -165,7 +162,7 @@ class ConditionalExperimentalMode:
       self.curve_detected = False
 
   # Slower lead detection - Credit goes to the DragonPilot team!
-  def slow_lead(self, lead, t_follow, v_ego, v_lead):
+  def slow_lead(self, lead, stop_distance, t_follow, v_ego, v_lead):
     if self.lead_detected:
       slower_lead_ahead = lead.dRel < (v_ego - 1) * t_follow
 

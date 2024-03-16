@@ -330,6 +330,38 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name your backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a backup to delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Are you sure you want to delete this backup?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a restore point</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Are you sure you want to restore this version of FrogPilot?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Are you sure you want to restore this toggle backup?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Flash Panda</source>
         <translation type="unfinished"></translation>
     </message>
@@ -343,18 +375,6 @@
     </message>
     <message>
         <source>Flash</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Soft Reboot</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Are you sure you want to soft reboot?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Disengage to Soft Reboot</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -972,7 +992,7 @@ This may take up to a minute.</source>
     <name>SoftwarePanel</name>
     <message>
         <source>Updates are only downloaded while the car is off.</source>
-        <translation>업데이트는 차량 시동이 꺼졌을 때 다운로드됩니다.</translation>
+        <translation type="vanished">업데이트는 차량 시동이 꺼졌을 때 다운로드됩니다.</translation>
     </message>
     <message>
         <source>Current Version</source>
@@ -1041,6 +1061,10 @@ This may take up to a minute.</source>
     <message>
         <source>never</source>
         <translation>업데이트 안함</translation>
+    </message>
+    <message>
+        <source>Updates are only downloaded while the car is off or in park.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Manually</source>

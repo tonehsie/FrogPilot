@@ -2,7 +2,6 @@ from cereal import car
 from openpilot.common.conversions import Conversions as CV
 from panda import Panda
 from panda.python import uds
-from openpilot.common.numpy_fast import interp
 from openpilot.selfdrive.car.toyota.values import Ecu, CAR, DBC, ToyotaFlags, CarControllerParams, TSS2_CAR, RADAR_ACC_CAR, NO_DSU_CAR, \
                                         MIN_ACC_SPEED, EPS_SCALE, UNSUPPORTED_DSU_CAR, NO_STOP_TIMER_CAR, ANGLE_CONTROL_CAR, STOP_AND_GO_CAR
 from openpilot.selfdrive.car import get_safety_config
@@ -17,7 +16,7 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def get_pid_accel_limits(CP, current_speed, cruise_speed, frogpilot_variables):
     if frogpilot_variables.sport_plus:
-      return CarControllerParams.ACCEL_MIN, interp(current_speed, CarControllerParams.ACCEL_MAX_PLUS_BP, CarControllerParams.ACCEL_MAX_PLUS)
+      return CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX_PLUS
     else:
       return CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX
 
@@ -48,6 +47,16 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= ToyotaFlags.ZSS.value
 
     ret.stoppingControl = False  # Toyota starts braking more when it thinks you want to stop
+
+    stop_and_go = candidate in TSS2_CAR
+
+    # Detect smartDSU, which intercepts ACC_CMD from the DSU (or radar) allowing openpilot to send it
+    # 0x2AA is sent by a similar device which intercepts the radar instead of DSU on NO_DSU_CARs
+    if 0x2FF in fingerprint[0] or (0x2AA in fingerprint[0] and candidate in NO_DSU_CAR):
+      ret.flags |= ToyotaFlags.SMART_DSU.value
+
+    if 0x2AA in fingerprint[0] and candidate in NO_DSU_CAR:
+      ret.flags |= ToyotaFlags.RADAR_CAN_FILTER.value
 
     if candidate == CAR.PRIUS:
       ret.wheelbase = 2.70

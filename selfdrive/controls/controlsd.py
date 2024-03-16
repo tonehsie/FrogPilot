@@ -177,23 +177,24 @@ class Controls:
     # FrogPilot variables
     self.params = Params()
     self.params_memory = Params("/dev/shm/params")
+    self.params_storage = Params("/persist/comma/params")
 
     self.frogpilot_variables = SimpleNamespace()
 
+    self.drive_added = False
     self.driving_gear = False
     self.fcw_random_event_triggered = False
     self.openpilot_crashed = False
     self.previously_enabled = False
     self.random_event_triggered = False
     self.stopped_for_light_previously = False
-    self.vCruise69_alert_played = False
 
     self.drive_distance = 0
-    self.previous_drive_distance = 0
+    self.drive_time = 0
+    self.max_acceleration = 0
     self.previous_lead_distance = 0
     self.previous_speed_limit = SpeedLimitController.desired_speed_limit
     self.random_event_timer = 0
-    self.speed_limit_changed_timer = 0
 
     ignore = self.sensor_packets + ['testJoystick']
     if SIMULATION:
@@ -298,7 +299,6 @@ class Controls:
     self.experimental_mode = False
     self.v_cruise_helper = VCruiseHelper(self.CP)
     self.recalibrating_seen = False
-    self.nn_alert_shown = False
 
     self.can_log_mono_time = 0
 
@@ -343,6 +343,10 @@ class Controls:
         self.openpilot_crashed = True
       return
 
+    # Show holiday related event to indicate which holiday is active
+    if self.sm.frame == 1000 and self.holiday_themes and self.params_memory.get_int("CurrentHolidayTheme") != 0:
+      self.events.add(EventName.holidayActive)
+
     # Add joystick event, static on cars, dynamic on nonCars
     if self.joystick_mode:
       self.events.add(EventName.joystickDebug)
@@ -363,8 +367,7 @@ class Controls:
       return
 
     # show alert to indicate whether NNFF is loaded
-    if not self.nn_alert_shown and self.sm.frame % 550 == 0 and self.CP.lateralTuning.which() == 'torque' and self.CI.has_lateral_torque_nn:
-      self.nn_alert_shown = True
+    if self.sm.frame == 550 and self.CP.lateralTuning.which() == 'torque' and self.CI.has_lateral_torque_nn:
       self.events.add(EventName.torqueNNLoad)
 
     # Block resume if cruise never previously enabled
@@ -552,7 +555,7 @@ class Controls:
     if planner_fcw or model_fcw:
       self.events.add(EventName.fcw)
       self.fcw_random_event_triggered = True
-    elif self.fcw_random_event_triggered:
+    elif self.fcw_random_event_triggered and self.random_events:
       self.events.add(EventName.yourFrogTriedToKillMe)
       self.fcw_random_event_triggered = False
       self.random_event_triggered = True
@@ -582,10 +585,51 @@ class Controls:
 
     # Store the total distance traveled
     self.drive_distance += CS.vEgo * DT_CTRL
+    self.drive_time += DT_CTRL
 
-    if self.drive_distance != self.previous_drive_distance:
-      self.params_memory.put_float("FrogPilotKilometers", self.drive_distance / 1000)
-      self.params_memory.put_float("FrogPilotMinutes", self.sm.frame * DT_CTRL / 60)
+    # Store the current drive's data after a minute when at a standstill - Need to do this live for comma powerless users
+    if self.drive_time > 60 and CS.standstill:
+      current_total_distance = self.params.get_float("FrogPilotKilometers")
+      distance_to_add = self.drive_distance / 1000
+      new_total_distance = current_total_distance + distance_to_add
+
+      self.params.put_float("FrogPilotKilometers", new_total_distance)
+      self.params_storage.put_float("FrogPilotKilometers", new_total_distance)
+
+      self.drive_distance = 0
+
+      current_total_time = self.params.get_float("FrogPilotMinutes")
+      time_to_add = self.drive_time / 60
+      new_total_time = current_total_time + time_to_add
+
+      self.params.put_float("FrogPilotMinutes", new_total_time)
+      self.params_storage.put_float("FrogPilotMinutes", new_total_time)
+
+      self.drive_time = 0
+
+      # Only count the drive if it lasted longer than 5 minutes
+      if self.sm.frame * DT_CTRL > 60 * 5 and not self.drive_added:
+        new_total_drives = self.params.get_int("FrogPilotDrives") + 1
+
+        self.params.put_int("FrogPilotDrives", new_total_drives)
+        self.params_storage.put_int("FrogPilotDrives", new_total_drives)
+
+        self.drive_added = True
+
+    # Acceleration Random Event alerts
+    if self.random_events:
+      acceleration = CS.aEgo
+
+      if not CS.gasPressed:
+        self.max_acceleration = max(acceleration, self.max_acceleration)
+      else:
+        self.max_acceleration = 0
+
+      if self.max_acceleration >= 3.0 and acceleration < 1.5:
+        self.events.add(EventName.accel30)
+        self.params_memory.put_int("CurrentRandomEvent", 2)
+        self.random_event_triggered = True
+        self.max_acceleration = 0
 
     # Green light alert
     if self.green_light_alert:
@@ -640,7 +684,7 @@ class Controls:
         else:
           self.params_memory.put_bool("SLCConfirmed", True)
 
-      if self.params_memory.get_bool("SLCConfirmedPressed") or current_speed_limit == desired_speed_limit or not self.speed_limit_confirmation:
+      if self.params_memory.get_bool("SLCConfirmedPressed") or abs(current_speed_limit - desired_speed_limit) < 1 or not self.speed_limit_confirmation:
         self.FPCC.speedLimitChanged = False
         self.params_memory.put_bool("SLCConfirmedPressed", False)
 
@@ -831,10 +875,10 @@ class Controls:
     # FrogPilot functions
     frogpilot_plan = self.sm['frogpilotPlan']
 
-    # Reset the Random Event flag
+    # Reset the Random Event flag after 5 seconds
     if self.random_event_triggered:
       self.random_event_timer += 1
-      if self.random_event_timer >= 500:
+      if self.random_event_timer * DT_CTRL >= 4:
         self.random_event_triggered = False
         self.random_event_timer = 0
         self.params_memory.remove("CurrentRandomEvent")
@@ -854,7 +898,6 @@ class Controls:
     self.FPCC.alwaysOnLateral &= CS.cruiseState.available
     self.FPCC.alwaysOnLateral &= self.driving_gear
     self.FPCC.alwaysOnLateral &= not self.openpilot_crashed
-    self.FPCC.alwaysOnLateral &= False
 
     if self.FPCC.alwaysOnLateral:
       self.current_alert_types.append(ET.WARNING)
@@ -931,7 +974,7 @@ class Controls:
         good_speed = CS.vEgo > 5
         max_torque = abs(self.last_actuators.steer) > 0.99
         if undershooting and turning and good_speed and max_torque and not self.random_event_triggered:
-          if self.sm.frame % 10000 == 0:
+          if self.sm.frame % 10000 == 0 and self.random_events:
             lac_log.active and self.events.add(EventName.firefoxSteerSaturated)
             self.params_memory.put_int("CurrentRandomEvent", 1)
             self.random_event_triggered = True
@@ -1183,8 +1226,10 @@ class Controls:
     custom_sounds = self.params.get_int("CustomSounds") if custom_theme else 0
     frog_sounds = custom_sounds == 1
     self.goat_scream = frog_sounds and self.params.get_bool("GoatScream")
+    self.holiday_themes = custom_theme and self.params.get_bool("HolidayThemes")
 
     experimental_mode_activation = self.params.get_bool("ExperimentalModeActivation")
+    self.frogpilot_variables.experimental_mode_via_distance = experimental_mode_activation and self.params.get_bool("ExperimentalModeViaDistance")
     self.frogpilot_variables.experimental_mode_via_lkas = experimental_mode_activation and self.params.get_bool("ExperimentalModeViaLKAS")
 
     lateral_tune = self.params.get_bool("LateralTune")

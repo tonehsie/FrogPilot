@@ -4,7 +4,9 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import traceback
+from pathlib import Path
 from typing import List, Tuple, Union
 
 from cereal import log
@@ -83,6 +85,7 @@ def manager_init() -> None:
     ("HasAcceptedTerms", "0"),
     ("LanguageSetting", "main_en"),
     ("OpenpilotEnabledToggle", "1"),
+    ("UpdaterAvailableBranches", ""),
     ("LongitudinalPersonality", str(log.LongitudinalPersonality.standard)),
 
     # Default FrogPilot parameters
@@ -98,7 +101,9 @@ def manager_init() -> None:
     ("AlwaysOnLateral", "1"),
     ("AlwaysOnLateralMain", "0"),
     ("BlindSpotPath", "1"),
-    ("CameraView", "0"),
+    ("CameraView", "1"),
+    ("CarMake", ""),
+    ("CarModel", ""),
     ("CECurves", "1"),
     ("CENavigation", "1"),
     ("CENavigationIntersections", "1"),
@@ -109,12 +114,12 @@ def manager_init() -> None:
     ("CESpeed", "0"),
     ("CESpeedLead", "0"),
     ("CEStopLights", "1"),
-    ("CEStopLightsLead", "1"),
+    ("CEStopLightsLead", "0"),
     ("Compass", "0"),
     ("ConditionalExperimental", "1"),
-    ("CrosstrekTorque", "0"),
+    ("CrosstrekTorque", "1"),
     ("CurveSensitivity", "100"),
-    ("CustomAlerts", "0"),
+    ("CustomAlerts", "1"),
     ("CustomColors", "1"),
     ("CustomIcons", "1"),
     ("CustomPersonalities", "1"),
@@ -122,10 +127,11 @@ def manager_init() -> None:
     ("CustomSounds", "1"),
     ("CustomTheme", "1"),
     ("CustomUI", "1"),
-    ("CydiaTune", "1"),
+    ("CydiaTune", "0"),
     ("DecelerationProfile", "1"),
     ("DeviceShutdown", "9"),
     ("DisableMTSCSmoothing", "0"),
+    ("DisableOnroadUploads", "0"),
     ("DisableVTSCSmoothing", "0"),
     ("DisengageVolume", "100"),
     ("DragonPilotTune", "0"),
@@ -135,24 +141,34 @@ def manager_init() -> None:
     ("EngageVolume", "100"),
     ("EVTable", "1"),
     ("ExperimentalModeActivation", "1"),
+    ("ExperimentalModeViaDistance", "0"),
     ("ExperimentalModeViaLKAS", "0"),
     ("ExperimentalModeViaScreen", "1"),
     ("Fahrenheit", "0"),
     ("FireTheBabysitter", "0"),
     ("ForceAutoTune", "0"),
+    ("ForceFingerprint", "0"),
     ("ForceMPHDashboard", "0"),
     ("FPSCounter", "0"),
     ("FrogPilotDrives", "0"),
     ("FrogPilotKilometers", "0"),
     ("FrogPilotMinutes", "0"),
-    ("FrogsGoMooTune", "0"),
+    ("FrogsGoMooTune", "1"),
     ("FullMap", "0"),
     ("GasRegenCmd", "0"),
     ("GoatScream", "1"),
     ("GreenLightAlert", "0"),
+    ("HideAlerts", "0"),
+    ("HideAOLStatusBar", "0"),
+    ("HideCEMStatusBar", "0"),
+    ("HideLeadMarker", "0"),
+    ("HideMapIcon", "0"),
+    ("HideMaxSpeed", "0"),
     ("HideSpeed", "0"),
     ("HideSpeedUI", "0"),
+    ("HideUIElements", "0"),
     ("HigherBitrate", "0"),
+    ("HolidayThemes", "1"),
     ("LaneChangeTime", "0"),
     ("LaneDetection", "1"),
     ("LaneDetectionWidth", "60"),
@@ -165,6 +181,7 @@ def manager_init() -> None:
     ("LongPitch", "1"),
     ("LoudBlindspotAlert", "0"),
     ("LowerVolt", "1"),
+    ("MapsSelected", ""),
     ("MapStyle", "0"),
     ("MTSCAggressiveness", "100"),
     ("MTSCCurvatureCheck", "0"),
@@ -173,11 +190,13 @@ def manager_init() -> None:
     ("ModelUI", "1"),
     ("MTSCEnabled", "1"),
     ("MuteOverheated", "0"),
+    ("NavChill", "0"),
     ("NNFF", "1"),
     ("NoLogging", "0"),
     ("NoUploads", "0"),
     ("NudgelessLaneChange", "1"),
     ("NumericalTemp", "0"),
+    ("OfflineMode", "0"),
     ("Offset1", "5"),
     ("Offset2", "5"),
     ("Offset3", "5"),
@@ -204,6 +223,11 @@ def manager_init() -> None:
     ("RoadNameUI", "1"),
     ("RotatingWheel", "1"),
     ("ScreenBrightness", "101"),
+    ("ScreenBrightnessOnroad", "101"),
+    ("ScreenManagement", "1"),
+    ("ScreenRecorder", "1"),
+    ("ScreenTimeout", "30"),
+    ("ScreenTimeoutOnroad", "30"),
     ("SearchInput", "0"),
     ("SetSpeedLimit", "0"),
     ("SetSpeedOffset", "0"),
@@ -211,10 +235,14 @@ def manager_init() -> None:
     ("ShowGPU", "0"),
     ("ShowIP", "0"),
     ("ShowMemoryUsage", "0"),
+    ("ShowSLCOffset", "0"),
+    ("ShowSLCOffsetUI", "1"),
+    ("ShowStorageLeft", "0"),
+    ("ShowStorageUsed", "0"),
     ("Sidebar", "0"),
     ("SLCConfirmation", "1"),
     ("SLCConfirmationLower", "1"),
-    ("SLCConfirmationHigher", "0"),
+    ("SLCConfirmationHigher", "1"),
     ("SLCFallback", "2"),
     ("SLCOverride", "1"),
     ("SLCPriority1", "Dashboard"),
@@ -222,15 +250,18 @@ def manager_init() -> None:
     ("SLCPriority3", "Navigation"),
     ("SmoothBraking", "1"),
     ("SNGHack", "1"),
-    ("SpeedLimitChangedAlert", "0"),
+    ("SpeedLimitChangedAlert", "1"),
     ("SpeedLimitController", "1"),
     ("StandardFollow", "1.45"),
     ("StandardJerk", "1.0"),
+    ("StandbyMode", "0"),
+    ("SteerRatio", "0"),
+    ("StockTune", "0"),
     ("StoppingDistance", "0"),
-    ("StorageParamsSet", "0"),
     ("TurnAggressiveness", "100"),
     ("TurnDesires", "0"),
     ("UnlimitedLength", "1"),
+    ("UpdateSchedule", "0"),
     ("UseLateralJerk", "0"),
     ("UseSI", "0"),
     ("UseVienna", "0"),
@@ -253,10 +284,8 @@ def manager_init() -> None:
         params.put(k, v)
       else:
         params.put(k, params_storage.get(k))
-    elif not params.get_bool("StorageParamsSet"):
+    else:
       params_storage.put(k, params.get(k))
-
-  params.put_bool("StorageParamsSet", True)
 
   # Create folders needed for msgq
   try:
@@ -364,24 +393,6 @@ def manager_thread() -> None:
       if os.path.isfile(os.path.join(sentry.CRASHES_DIR, 'error.txt')):
         os.remove(os.path.join(sentry.CRASHES_DIR, 'error.txt'))
 
-      # Store the previous drive's data
-      keys = ["FrogPilotKilometers", "FrogPilotMinutes"]
-      for key in keys:
-        current_value = params.get_float(key)
-        value_to_add = params_memory.get_float(key)
-        new_value = current_value + value_to_add
-
-        params.put_float(key, new_value)
-        params_storage.put_float(key, new_value)
-        params_memory.remove(key)
-
-        # Only count the drive if it lasted longer than 5 minutes
-        if key == "FrogPilotMinutes" and value_to_add >= 5:
-          new_frogpilot_drives = params.get_int("FrogPilotDrives") + 1
-
-          params.put_int("FrogPilotDrives", new_frogpilot_drives)
-          params_storage.put_int("FrogPilotDrives", new_frogpilot_drives)
-
     # update onroad params, which drives boardd's safety setter thread
     if started != started_prev:
       write_onroad_params(started, params)
@@ -402,7 +413,7 @@ def manager_thread() -> None:
 
     # Exit main loop when uninstall/shutdown/reboot is needed
     shutdown = False
-    for param in ("DoUninstall", "DoShutdown", "DoReboot", "DoSoftReboot"):
+    for param in ("DoUninstall", "DoShutdown", "DoReboot"):
       if params.get_bool(param):
         shutdown = True
         params.put("LastManagerExitReason", f"{param} {datetime.datetime.now()}")
@@ -414,13 +425,50 @@ def manager_thread() -> None:
     if params_memory.get_bool("FrogPilotTogglesUpdated"):
       update_frogpilot_params(params, params_memory)
 
+def backup_openpilot():
+  # Configure the auto backup generator
+  backup_dir_path = '/data/backups'
+  Path(backup_dir_path).mkdir(parents=True, exist_ok=True)
+
+  # Sort backups by creation time and only keep the 5 newest auto generated ones
+  auto_backups = sorted([f for f in os.listdir(backup_dir_path) if f.endswith("_auto")],
+                        key=lambda x: os.path.getmtime(os.path.join(backup_dir_path, x)))
+  for old_backup in auto_backups:
+    subprocess.run(['sudo', 'rm', '-rf', os.path.join(backup_dir_path, old_backup)], check=True)
+    print(f"Deleted oldest backup to maintain limit: {old_backup}")
+
+  # Generate the backup folder name from the current git commit and branch name
+  branch = get_short_branch()
+  commit = get_commit_date()[12:-16]
+  backup_folder_name = f"{branch}_{commit}_auto"
+
+  # Check if the backup folder already exists
+  backup_path = os.path.join(backup_dir_path, backup_folder_name)
+
+  if os.path.exists(backup_path):
+    print(f"Backup folder {backup_folder_name} already exists. Skipping backup.")
+    return
+
+  # Create the backup directory and copy openpilot to it
+  Path(backup_path).mkdir(parents=True, exist_ok=True)
+  subprocess.run(['sudo', 'cp', '-a', '/data/openpilot/.', backup_path + '/'], check=True)
+  print(f"Successfully backed up openpilot to {backup_folder_name}.")
+
 def main() -> None:
   # Create the long term param storage folder
   try:
+    # Attempt to remount /persist as read-write
     subprocess.run(['sudo', 'mount', '-o', 'remount,rw', '/persist'], check=True)
     print("Successfully remounted /persist as read-write.")
   except subprocess.CalledProcessError as e:
     print(f"Failed to remount /persist. Error: {e}")
+
+  # Backup the current version of openpilot
+  try:
+    backup_thread = threading.Thread(target=backup_openpilot)
+    backup_thread.start()
+  except subprocess.CalledProcessError as e:
+    print(f"Failed to backup openpilot. Error: {e}")
 
   manager_init()
   if os.getenv("PREPAREONLY") is not None:
@@ -441,9 +489,6 @@ def main() -> None:
   if params.get_bool("DoUninstall"):
     cloudlog.warning("uninstalling")
     HARDWARE.uninstall()
-  elif params.get_bool("DoSoftReboot"):
-    cloudlog.warning("softreboot")
-    HARDWARE.reboot()
   elif params.get_bool("DoReboot"):
     cloudlog.warning("reboot")
     HARDWARE.reboot()

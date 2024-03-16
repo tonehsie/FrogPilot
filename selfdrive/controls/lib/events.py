@@ -12,6 +12,8 @@ from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
 from openpilot.system.version import get_short_branch
 
+params_memory = Params("/dev/shm/params")
+
 AlertSize = log.ControlsState.AlertSize
 AlertStatus = log.ControlsState.AlertStatus
 VisualAlert = car.CarControl.HUDControl.VisualAlert
@@ -261,7 +263,7 @@ def no_gps_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, m
 
 
 def torque_nn_load_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
-  model_name = Params("/dev/shm/params").get("NNFFModelName")
+  model_name = params_memory.get("NNFFModelName")
   if model_name == "":
     return Alert(
       "NNFF Torque Controller not available",
@@ -350,6 +352,30 @@ def joystick_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster,
 
 
 # FrogPilot alerts
+def holiday_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
+  holiday_messages = {
+    1: ("Happy April Fool's Day! 🤡", "aprilFoolsAlert"),
+    2: ("Merry Christmas! 🎄", "christmasAlert"),
+    3: ("¡Feliz Cinco de Mayo! 🌮", "cincoDeMayoAlert"),
+    4: ("Happy Easter! 🐰", "easterAlert"),
+    5: ("Happy Fourth of July! 🎆", "fourthOfJulyAlert"),
+    6: ("Happy Halloween! 🎃", "halloweenAlert"),
+    7: ("Happy New Year! 🎉", "newYearsDayAlert"),
+    8: ("Happy St. Patrick's Day! 🍀", "stPatricksDayAlert"),
+    9: ("Happy Thanksgiving! 🦃", "thanksgivingAlert"),
+    10: ("Happy Valentine's Day! ❤️", "valentinesDayAlert"),
+    11: ("Happy World Frog Day! 🐸", "worldFrogDayAlert"),
+  }
+
+  theme_id = params_memory.get_int("CurrentHolidayTheme")
+  message, alert_type = holiday_messages.get(theme_id, ("", ""))
+
+  return Alert(
+    message,
+    "",
+    AlertStatus.normal, AlertSize.small,
+    Priority.LOWEST, VisualAlert.none, AudibleAlert.none, 5.)
+
 def no_lane_available_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int) -> Alert:
   lane_width = sm['frogpilotPlan'].laneWidthLeft if CS.leftBlinker else sm['frogpilotPlan'].laneWidthRight
   lane_width_msg = f"{lane_width:.1f} meters" if metric else f"{lane_width * CV.METER_TO_FOOT:.1f} feet"
@@ -358,7 +384,6 @@ def no_lane_available_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
     f"Detected lane width is only {lane_width_msg}",
     AlertStatus.normal, AlertSize.mid,
     Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .2)
-
 
 EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
   # ********** events with no alerts **********
@@ -1000,6 +1025,10 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
       Priority.MID, VisualAlert.none, AudibleAlert.prompt, 3.),
   },
 
+  EventName.holidayActive: {
+    ET.PERMANENT: holiday_alert,
+  },
+
   EventName.laneChangeBlockedLoud: {
     ET.WARNING: Alert(
       "Car Detected in Blindspot",
@@ -1065,6 +1094,14 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
   },
 
   # Random Events
+  EventName.accel30: {
+    ET.WARNING: Alert(
+      "UwU u went a bit fast there!",
+      "(⁄ ⁄•⁄ω⁄•⁄ ⁄)",
+      AlertStatus.frogpilot, AlertSize.mid,
+      Priority.LOW, VisualAlert.none, AudibleAlert.uwu, 4.),
+  },
+
   EventName.firefoxSteerSaturated: {
     ET.WARNING: Alert(
       "Turn Exceeds Steering Limit",
@@ -1091,10 +1128,10 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
 
   EventName.yourFrogTriedToKillMe: {
     ET.PERMANENT: Alert(
-      "Your frog tried to kill me",
-      "😠",
-      AlertStatus.frogpilot, AlertSize.small,
-      Priority.MID, VisualAlert.none, AudibleAlert.angry, 3.),
+      "Your frog tried to kill me...",
+      "😡",
+      AlertStatus.frogpilot, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.angry, 5.),
   },
 }
 

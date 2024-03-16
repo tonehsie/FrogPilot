@@ -88,7 +88,7 @@ class FrogPilotPlanner:
     self.road_curvature = self.fpf.road_curvature(modelData, v_ego)
 
     # Update the desired stopping distance
-    self.stop_distance = STOP_DISTANCE + self.increased_stopping_distance
+    self.stop_distance = STOP_DISTANCE
 
     # Update the max allowed speed
     self.v_cruise = self.update_v_cruise(carState, controlsState, enabled, modelData, v_cruise, v_ego)
@@ -137,7 +137,8 @@ class FrogPilotPlanner:
         if self.speed_limit_controller_override == 1:
           # Set the speed limit to the manual set speed
           if carState.gasPressed:
-            self.overridden_speed = np.clip(v_ego + v_ego_diff, self.slc_target, v_cruise + v_cruise_diff)
+            self.overridden_speed = v_ego + v_ego_diff
+          self.overridden_speed = np.clip(self.overridden_speed, self.slc_target, v_cruise + v_cruise_diff)
         elif self.speed_limit_controller_override == 2:
           # Set the speed limit to the max set speed
           self.overridden_speed = v_cruise + v_cruise_diff
@@ -170,7 +171,7 @@ class FrogPilotPlanner:
     targets = [self.mtsc_target, max(self.overridden_speed, self.slc_target) - v_ego_diff, self.vtsc_target]
     filtered_targets = [target for target in targets if target > CRUISING_SPEED]
 
-    return (min(filtered_targets) if filtered_targets else v_cruise)
+    return min(filtered_targets + [v_cruise]) if filtered_targets else v_cruise
 
   def publish(self, sm, pm, mpc):
     frogpilot_plan_send = messaging.new_message('frogpilotPlan')

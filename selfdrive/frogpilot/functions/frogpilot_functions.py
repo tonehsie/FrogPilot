@@ -5,11 +5,11 @@ from openpilot.common.params import Params
 from openpilot.system.hardware import HARDWARE
 
 
-params_memory = Params("/dev/shm/params")
-
 DEFAULT_MODEL = "los-angeles"
 
+CITY_SPEED_LIMIT = 25
 CRUISING_SPEED = 5  # Roughly the speed cars go when not touching the gas while in drive
+PROBABILITY = 0.6   # 60% chance of condition being true
 THRESHOLD = 5       # Time threshold (0.25s)
 
 # Acceleration profiles - Credit goes to the DragonPilot team!
@@ -49,6 +49,7 @@ class MovingAverageCalculator:
 class FrogPilotFunctions:
   def __init__(self) -> None:
     self.params = Params()
+    self.params_memory = Params("/dev/shm/params")
 
   @staticmethod
   def get_min_accel_eco(v_ego):
@@ -86,26 +87,31 @@ class FrogPilotFunctions:
 
   def distance_button_function(self, new_personality):
     self.params.put_int("LongitudinalPersonality", new_personality)
-    params_memory.put_bool("PersonalityChangedViaWheel", True)
+    self.params_memory.put_bool("PersonalityChangedViaWheel", True)
 
   @property
   def personality_changed_via_ui(self):
-    return params_memory.get_bool("PersonalityChangedViaUI")
+    return self.params_memory.get_bool("PersonalityChangedViaUI")
 
-  @staticmethod
-  def reset_personality_changed_param():
-    params_memory.put_bool("PersonalityChangedViaUI", False)
+  def reset_personality_changed_param(self):
+    self.params_memory.put_bool("PersonalityChangedViaUI", False)
 
-  def lkas_button_function(self, conditional_experimental_mode):
-    if conditional_experimental_mode:
-      # Set "CEStatus" to work with "Conditional Experimental Mode"
-      conditional_status = params_memory.get_int("CEStatus")
-      override_value = 0 if conditional_status in (1, 2, 3, 4) else 1 if conditional_status >= 5 else 2
-      params_memory.put_int("CEStatus", override_value)
-    else:
-      experimental_mode = self.params.get_bool("ExperimentalMode")
-      # Invert the value of "ExperimentalMode"
-      self.params.put_bool("ExperimentalMode", not experimental_mode)
+  def update_cestatus_distance(self):
+    # Set "CEStatus" to work with "Conditional Experimental Mode"
+    conditional_status = self.params_memory.get_int("CEStatus")
+    override_value = 0 if conditional_status in (1, 2, 3, 4, 5, 6) else 3 if conditional_status >= 7 else 4
+    self.params_memory.put_int("CEStatus", override_value)
+
+  def update_cestatus_lkas(self):
+    # Set "CEStatus" to work with "Conditional Experimental Mode"
+    conditional_status = self.params_memory.get_int("CEStatus")
+    override_value = 0 if conditional_status in (1, 2, 3, 4, 5, 6) else 5 if conditional_status >= 7 else 6
+    self.params_memory.put_int("CEStatus", override_value)
+
+  def update_experimental_mode(self):
+    experimental_mode = self.params.get_bool("ExperimentalMode")
+    # Invert the value of "ExperimentalMode"
+    self.params.put_bool("ExperimentalMode", not experimental_mode)
 
   @staticmethod
   def road_curvature(modelData, v_ego):

@@ -330,6 +330,38 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name your backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a backup to delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Are you sure you want to delete this backup?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a restore point</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Are you sure you want to restore this version of FrogPilot?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Are you sure you want to restore this toggle backup?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Flash Panda</source>
         <translation type="unfinished"></translation>
     </message>
@@ -343,18 +375,6 @@
     </message>
     <message>
         <source>Flash</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Soft Reboot</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Are you sure you want to soft reboot?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Disengage to Soft Reboot</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -988,7 +1008,7 @@ This may take up to a minute.</source>
     </message>
     <message>
         <source>Updates are only downloaded while the car is off.</source>
-        <translation>ตัวอัปเดตจะดำเนินการดาวน์โหลดเมื่อรถดับเครื่องยนต์อยู่เท่านั้น</translation>
+        <translation type="vanished">ตัวอัปเดตจะดำเนินการดาวน์โหลดเมื่อรถดับเครื่องยนต์อยู่เท่านั้น</translation>
     </message>
     <message>
         <source>Current Version</source>
@@ -1041,6 +1061,10 @@ This may take up to a minute.</source>
     <message>
         <source>up to date, last checked %1</source>
         <translation>ล่าสุดแล้ว ตรวจสอบครั้งสุดท้ายเมื่อ %1</translation>
+    </message>
+    <message>
+        <source>Updates are only downloaded while the car is off or in park.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Manually</source>

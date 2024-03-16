@@ -207,9 +207,6 @@ def finalize_update() -> None:
   set_consistent_flag(True)
   cloudlog.info("done finalizing overlay")
 
-  # FrogPilot update functions
-  params = Params()
-  params.put("Updated", datetime.datetime.now().astimezone(ZoneInfo('America/Phoenix')).strftime("%B %d, %Y - %I:%M%p").encode('utf8'))
 
 def handle_agnos_update() -> None:
   from openpilot.system.hardware.tici.agnos import flash_agnos_update, get_target_slot_number
@@ -414,6 +411,7 @@ class Updater:
     finalize_update()
     cloudlog.info("finalize success!")
 
+    self.params.put("Updated", datetime.datetime.now().astimezone(ZoneInfo('America/Phoenix')).strftime("%B %d, %Y - %I:%M%p").encode('utf8'))
 
 def main() -> None:
   params = Params()

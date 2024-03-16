@@ -5648,7 +5648,7 @@ static int __pyx_pw_7opendbc_3can_10parser_pyx_9CANDefine_1__init__(PyObject *__
 
 static int __pyx_pf_7opendbc_3can_10parser_pyx_9CANDefine___init__(struct __pyx_obj_7opendbc_3can_10parser_pyx_CANDefine *__pyx_v_self, PyObject *__pyx_v_dbc_name) {
   PyObject *__pyx_v_address_to_msg_name = NULL;
-  std::vector<struct Msg> ::size_type __pyx_v_i;
+  std::vector<struct Val> ::size_type __pyx_v_i;
   struct Msg __pyx_v_msg;
   PyObject *__pyx_v_name = NULL;
   uint32_t __pyx_v_address;
@@ -5671,7 +5671,7 @@ static int __pyx_pf_7opendbc_3can_10parser_pyx_9CANDefine___init__(struct __pyx_
   PyObject *__pyx_t_7 = NULL;
   std::vector<struct Msg> ::size_type __pyx_t_8;
   std::vector<struct Msg> ::size_type __pyx_t_9;
-  std::vector<struct Msg> ::size_type __pyx_t_10;
+  std::vector<struct Val> ::size_type __pyx_t_10;
   uint32_t __pyx_t_11;
   PyObject *__pyx_t_12 = NULL;
   int __pyx_t_13;
@@ -5873,10 +5873,10 @@ static int __pyx_pf_7opendbc_3can_10parser_pyx_9CANDefine___init__(struct __pyx_
  *       val = self.dbc[0].vals[i]
  * 
  */
-  __pyx_t_14 = (__pyx_v_self->dbc[0]).vals.size();
-  __pyx_t_15 = __pyx_t_14;
-  for (__pyx_t_8 = 0; __pyx_t_8 < __pyx_t_15; __pyx_t_8+=1) {
-    __pyx_v_i = __pyx_t_8;
+  __pyx_t_10 = (__pyx_v_self->dbc[0]).vals.size();
+  __pyx_t_14 = __pyx_t_10;
+  for (__pyx_t_15 = 0; __pyx_t_15 < __pyx_t_14; __pyx_t_15+=1) {
+    __pyx_v_i = __pyx_t_15;
 
     /* "opendbc/can/parser_pyx.pyx":130
  * 
